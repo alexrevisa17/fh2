@@ -42,6 +42,7 @@ class FaphouseClient:
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1'
             })
+            self.session_created = True
             self.login()
         return self.session
     
@@ -81,6 +82,9 @@ class FaphouseClient:
             )
             
             logger.info(f"  📡 Login response status: {login_res.status_code}")
+            logger.info(f"  📡 Login response headers: {dict(login_res.headers)}")
+logger.info(f"  🍪 Cookies after login: {self.session.cookies.get_dict()}")
+logger.info(f"  📄 Login response: {login_res.text[:1000]}")
             
             if login_res.status_code == 200:
                 try:
