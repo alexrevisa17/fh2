@@ -60,6 +60,9 @@ class FaphouseClient:
             'DNT': '1',
             'Connection': 'keep-alive'
         })
+
+                self.session_created = True
+        logger.info("✅ Session object created")
         
         try:
             logger.info("  📡 Getting initial page...")
