@@ -315,7 +315,7 @@ def license_page():
     if request.method == 'POST':
         key = request.form.get("license", "").strip()
 
-        if key == LICENSE_KEY:
+        if check_license(key):
             session["licensed"] = True
             return redirect("/")
 
