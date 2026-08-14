@@ -45,6 +45,7 @@ def check_license(key):
             return False
 
         # Aktivasi pertama
+        logger.info(f"License ditemukan: {license_data}")
         if license_data["activated_at"] is None:
 
             activated = datetime.now(timezone.utc)
@@ -56,12 +57,25 @@ def check_license(key):
             (
                 supabase
                 .table("licenses")
+                logger.info("Mengaktifkan license pertama kali...")
                 .update({
                     "activated_at": activated.isoformat(),
                     "expires_at": expires.isoformat()
                 })
                 .eq("id", license_data["id"])
                 .execute()
+                update_result = (
+    supabase
+    .table("licenses")
+    .update({
+        "activated_at": activated.isoformat(),
+        "expires_at": expires.isoformat()
+    })
+    .eq("id", license_data["id"])
+    .execute()
+)
+
+logger.info(f"Update result: {update_result}")
             )
 
         return True
