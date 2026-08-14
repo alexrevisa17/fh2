@@ -533,6 +533,12 @@
 
             <form method="POST">
 
+                <input
+    type="hidden"
+    name="device_id"
+    id="device_id"
+>
+
                 <label class="label">
                     🔑 License Key
                 </label>
@@ -635,6 +641,27 @@
         </section>
 
     </main>
+
+    <script>
+
+let device = localStorage.getItem("device_id");
+
+if (!device) {
+
+    device = crypto.randomUUID();
+
+    localStorage.setItem(
+        "device_id",
+        device
+    );
+
+}
+
+document
+.getElementById("device_id")
+.value = device;
+
+</script>
 
 </body>
 
