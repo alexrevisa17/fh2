@@ -793,6 +793,18 @@ async function loadLicenses(){
         }
     </button>
 
+        <button
+        type="button"
+        onclick="deleteLicense('${item.id}')"
+        style="
+            margin-top:8px;
+            background:#7f1d1d;
+            color:#fff;
+        "
+    >
+        🗑️ Hapus License
+    </button>
+
 </div>
 
 `;
@@ -868,6 +880,63 @@ async function toggleLicense(id, currentStatus){
             alert(
                 data.message ||
                 "Gagal mengubah status license"
+            );
+
+        }
+
+    }catch(error){
+
+        console.error(error);
+
+        alert(
+            "Terjadi kesalahan saat menghubungi server"
+        );
+
+    }
+
+}
+
+async function deleteLicense(id){
+
+    const confirmed = confirm(
+        "Yakin ingin menghapus license ini?\n\n" +
+        "License yang sudah dihapus tidak dapat digunakan lagi."
+    );
+
+    if(!confirmed){
+        return;
+    }
+
+    try{
+
+        const response = await fetch(
+            "/admin/delete-license",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    id: id
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if(data.success){
+
+            alert(data.message);
+
+            loadLicenses();
+
+        }else{
+
+            alert(
+                data.message ||
+                "Gagal menghapus license"
             );
 
         }
