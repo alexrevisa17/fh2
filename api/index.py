@@ -578,6 +578,10 @@ def license_page():
     if request.method == 'POST':
 
         key = request.form.get("license", "").strip()
+        device_id = request.form.get(
+    "device_id",
+    ""
+).strip()
 
         if check_license(key):
             session["licensed"] = True
