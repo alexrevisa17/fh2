@@ -1814,7 +1814,7 @@ def admin_dashboard():
     if not session.get("admin_logged_in"):
         return redirect("/admin")
 
-    return render_template_string("""
+    return render_template("admin_dashboard.html")
     <!DOCTYPE html>
 
     <html lang="id">
