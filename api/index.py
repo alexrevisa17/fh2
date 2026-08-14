@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, jsonify, request, render_template_string, session, redirect
 import requests
 import re
 import json
@@ -12,14 +12,16 @@ import gzip
 from io import BytesIO
 
 app = Flask(__name__)
+app.secret_key = "belajar-flask-license-123"
+LICENSE_KEY = "FAPHOUSE-FJ7TV-DHV4G"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 #Add a Faphouse Premium Account
 BASE_URL = "https://faphouse2.com"
-EMAIL = os.environ.get('EMAIL', 'ENTER_YOUR_EMAIL') #Email
-PASSWORD = os.environ.get('PASSWORD', 'ENTER_YOUR_PASSWORD') #Pass
+EMAIL = os.environ.get('EMAIL', 'faphouse@vcc.biz.id') #Email
+PASSWORD = os.environ.get('PASSWORD', 'Bangpray#123') #Pass
 
 CACHE_DURATION = 300
 
@@ -176,11 +178,6 @@ class FaphouseClient:
                 
                 if response.status_code == 200:
                     html = self._decode_response(response)
-                    
-                    logger.info("========== HTML START ==========")
-                    logger.info(html[:5000])
-                    logger.info("========== HTML END ==========")
-
                     if html:
                         m3u8 = self._extract_m3u8(html)
                         if m3u8:
@@ -208,11 +205,6 @@ class FaphouseClient:
             
             if response.status_code == 200:
                 html = self._decode_response(response)
-
-                logger.info("========== HTML START ==========")
-                logger.info(html[:5000] if html else "HTML kosong")
-                logger.info("========== HTML END ==========")
-    
                 if html:
                     m3u8 = self._extract_m3u8(html)
                     if m3u8:
