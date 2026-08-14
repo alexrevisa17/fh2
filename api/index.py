@@ -274,9 +274,72 @@ class FaphouseClient:
 
 client = FaphouseClient()
 
+@app.route('/license', methods=['GET', 'POST'])
+def license_page():
+    if request.method == 'POST':
+        key = request.form.get("license", "").strip()
+
+        if key == LICENSE_KEY:
+            session["licensed"] = True
+            return redirect("/")
+
+        return render_template_string("""
+        <h2>❌ License Salah</h2>
+        <a href="/license">Coba Lagi</a>
+        """)
+
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>License</title>
+        <style>
+            body{
+                background:#111;
+                color:white;
+                font-family:Arial;
+                display:flex;
+                justify-content:center;
+                align-items:center;
+                height:100vh;
+            }
+            .box{
+                background:#222;
+                padding:30px;
+                border-radius:10px;
+                width:350px;
+                text-align:center;
+            }
+            input{
+                width:100%;
+                padding:12px;
+                margin-top:15px;
+            }
+            button{
+                width:100%;
+                padding:12px;
+                margin-top:15px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h2>Masukkan License</h2>
+
+            <form method="POST">
+                <input name="license" placeholder="FAPHOUSE-XXXXX-XXXXX">
+                <button type="submit">Masuk</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """)
 
 @app.route('/')
 def index():
+    if not session.get("licensed"):
+       return redirect("/license")
+    
     return render_template_string("""
         <!DOCTYPE html>
         <html>
