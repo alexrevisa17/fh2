@@ -90,7 +90,7 @@ def check_license(key):
         .execute()
     )
 
-    return False
+        return False
 
         return True
 
