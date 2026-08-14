@@ -320,16 +320,96 @@ def license_page():
                 padding:12px;
                 margin-top:15px;
             }
+            .logo{
+font-size:60px;
+text-align:center;
+margin-bottom:10px;
+}
+
+h1{
+text-align:center;
+font-size:28px;
+margin:0;
+letter-spacing:1px;
+}
+
+.subtitle{
+text-align:center;
+margin-top:8px;
+color:#bbbbbb;
+}
+
+.brand{
+text-align:center;
+margin-top:6px;
+color:#4CAF50;
+font-size:14px;
+}
+
+.label{
+display:block;
+margin-top:20px;
+margin-bottom:8px;
+font-weight:bold;
+}
+
+hr{
+border:none;
+height:1px;
+background:#333;
+margin:22px 0;
+}
+
+.feature{
+color:#cccccc;
+line-height:30px;
+font-size:15px;
+}
+
+.copyright{
+margin-top:25px;
+text-align:center;
+font-size:13px;
+color:#777;
+}
         </style>
     </head>
     <body>
         <div class="box">
-            <h2>Masukkan License</h2>
-
-            <form method="POST">
-                <input name="license" placeholder="FAPHOUSE-XXXXX-XXXXX">
-                <button type="submit">Masuk</button>
-            </form>
+            <div class="logo">🎬</div>
+<h1>FAPHOUSE PLAYER</h1>
+<p class="subtitle">
+Premium License Manager
+</p>
+<p class="brand">
+Powered by <b>LAPAK ANGKER</b>
+</p>
+<hr>
+<form method="POST">
+<label class="label">
+🔑 License Key
+</label>
+<input
+name="license"
+placeholder="FAPHOUSE-XXXXX-XXXXX"
+autocomplete="off"
+required>
+<button>
+AKTIVASI LICENSE
+</button>
+</form>
+<hr>
+<div class="feature">
+<div>🛡 Secure License</div>
+<div>⚡ Fast Verification</div>
+<div>📦 Version 1.0.0</div>
+</div>
+<div class="copyright">
+© 2026 LAPAK ANGKER
+<br>
+All Rights Reserved
+</div>
+</div>
         </div>
     </body>
     </html>
