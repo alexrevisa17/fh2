@@ -777,7 +777,12 @@ def status():
         "session_created": client.session_created,
         "cache_info": client.get_m3u8_url.cache_info()._asdict()
     })
-
+    
+@app.route("/logout")
+def logout():
+    session.pop("licensed", None)
+    return redirect("/license")
+    
 def handler(request, context):
     return app(request.environ, context)
 
