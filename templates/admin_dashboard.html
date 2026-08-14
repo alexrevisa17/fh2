@@ -735,41 +735,67 @@ async function loadLicenses(){
 
         html += `
 
-        <div style="
-            background:#101217;
-            padding:15px;
-            border-radius:12px;
-            margin-bottom:10px;
-            border:1px solid #2d333d;
+<div style="
+    background:#101217;
+    padding:15px;
+    border-radius:12px;
+    margin-bottom:10px;
+    border:1px solid #2d333d;
+">
+
+    <div style="
+        color:#45e58a;
+        font-weight:bold;
+        word-break:break-all;
+    ">
+        ${item.license_key}
+    </div>
+
+    <div style="margin-top:8px;font-size:13px;">
+        👤 ${item.name}
+    </div>
+
+    <div style="margin-top:4px;font-size:13px;">
+        📅 ${item.duration_days} Hari
+    </div>
+
+    <div style="margin-top:4px;font-size:13px;">
+        📱 ${item.max_devices} Device
+    </div>
+
+    <div style="
+        margin-top:8px;
+        font-size:13px;
+        font-weight:700;
+    ">
+        Status:
+        <span style="
+            color:${item.status === "active" ? "#45e58a" : "#ff7777"};
         ">
+            ${item.status === "active" ? "🟢 ACTIVE" : "🔴 INACTIVE"}
+        </span>
+    </div>
 
-            <div style="
-                color:#45e58a;
-                font-weight:bold;
-                word-break:break-all;
-            ">
-                ${item.license_key}
-            </div>
+    <button
+        type="button"
+        onclick="toggleLicense(
+            '${item.id}',
+            '${item.status}'
+        )"
+        style="
+            margin-top:12px;
+            background:${item.status === "active" ? "#ff5555" : "#20d76b"};
+        "
+    >
+        ${item.status === "active"
+            ? "🔴 Nonaktifkan"
+            : "🟢 Aktifkan"
+        }
+    </button>
 
-            <div style="margin-top:8px;font-size:13px;">
-                👤 ${item.name}
-            </div>
+</div>
 
-            <div style="margin-top:4px;font-size:13px;">
-                📅 ${item.duration_days} Hari
-            </div>
-
-            <div style="margin-top:4px;font-size:13px;">
-                📱 ${item.max_devices} Device
-            </div>
-
-            <div style="margin-top:4px;font-size:13px;">
-                ✅ ${item.status}
-            </div>
-
-        </div>
-
-        `;
+`;
 
     });
 
@@ -779,6 +805,84 @@ async function loadLicenses(){
 }
 
 loadLicenses();
+
+async function toggleLicense(id, currentStatus){
+
+    const newStatus =
+        currentStatus === "active"
+            ? "inactive"
+            : "active";
+
+
+    const action =
+        newStatus === "active"
+            ? "mengaktifkan"
+            : "menonaktifkan";
+
+
+    const confirmed = confirm(
+        `Yakin ingin ${action} license ini?`
+    );
+
+
+    if(!confirmed){
+        return;
+    }
+
+
+    try{
+
+        const response = await fetch(
+            "/admin/update-license",
+            {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+
+                    id: id,
+
+                    status: newStatus
+
+                })
+
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if(data.success){
+
+            alert(data.message);
+
+            loadLicenses();
+
+        }else{
+
+            alert(
+                data.message ||
+                "Gagal mengubah status license"
+            );
+
+        }
+
+    }catch(error){
+
+        console.error(error);
+
+        alert(
+            "Terjadi kesalahan saat menghubungi server"
+        );
+
+    }
+
+}
 
 </script>
 
