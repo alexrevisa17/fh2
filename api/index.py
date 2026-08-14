@@ -2378,6 +2378,106 @@ button{
 
         </main>
 
+        <script>
+
+document
+.getElementById("generateBtn")
+.addEventListener("click", async function(){
+
+    const response = await fetch(
+        "/admin/generate-license",
+        {
+
+            method:"POST",
+
+            headers:{
+                "Content-Type":"application/json"
+            },
+
+            body:JSON.stringify({
+
+                name:
+                    document.getElementById("name").value,
+
+                duration_days:
+                    document.getElementById("duration_days").value,
+
+                max_devices:
+                    document.getElementById("max_devices").value,
+
+                notes:
+                    document.getElementById("notes").value
+
+            })
+
+        }
+    );
+
+    const data = await response.json();
+
+    if(data.success){
+
+        document.getElementById("result").innerHTML=`
+
+            <div style="
+                margin-top:18px;
+                padding:15px;
+                border-radius:12px;
+                background:#102417;
+                border:1px solid #20d76b;
+            ">
+
+                <div style="color:#45e58a;font-weight:700;">
+                    ✅ License Berhasil Dibuat
+                </div>
+
+                <div
+                    id="newLicense"
+                    style="
+                        margin-top:10px;
+                        font-size:18px;
+                        font-weight:800;
+                        word-break:break-all;
+                    "
+                >
+                    ${data.license_key}
+                </div>
+
+                <button
+                    onclick="copyLicense()"
+                    style="margin-top:15px;"
+                >
+                    📋 Copy License
+                </button>
+
+            </div>
+
+        `;
+
+    }else{
+
+        alert(data.message);
+
+    }
+
+});
+
+function copyLicense(){
+
+    navigator.clipboard.writeText(
+
+        document
+        .getElementById("newLicense")
+        .innerText
+
+    );
+
+    alert("License berhasil disalin");
+
+}
+
+</script>
+
     </body>
 
     </html>
