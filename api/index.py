@@ -6,13 +6,14 @@ import json
 import os
 import hmac
 from functools import lru_cache
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import logging
 import zlib
 import gzip
+import random
+import string
 from io import BytesIO
-from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -81,6 +82,17 @@ def check_license(key):
     except Exception as e:
         logger.error(f"License Error: {e}")
         return False
+
+def generate_license_key():
+    chars = string.ascii_uppercase + string.digits
+
+    parts = [
+        ''.join(random.choices(chars, k=4)),
+        ''.join(random.choices(chars, k=4)),
+        ''.join(random.choices(chars, k=4)),
+    ]
+
+    return "FAPHOUSE-" + "-".join(parts)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -340,6 +352,55 @@ class FaphouseClient:
         return None
 
 client = FaphouseClient()
+
+@app.route("/admin/generate-license", methods=["POST"])
+def admin_generate_license():
+
+    # Pastikan admin sudah login
+    if not session.get("admin_logged_in"):
+        return jsonify({
+            "success": False,
+            "message": "Unauthorized"
+        }), 401
+
+    try:
+
+        data = request.get_json()
+
+        name = data.get("name", "").strip()
+        duration_days = int(data.get("duration_days", 30))
+        max_devices = int(data.get("max_devices", 1))
+        notes = data.get("notes", "").strip()
+
+        license_key = generate_license_key()
+
+        (
+            supabase
+            .table("licenses")
+            .insert({
+                "license_key": license_key,
+                "name": name,
+                "status": "active",
+                "duration_days": duration_days,
+                "max_devices": max_devices,
+                "notes": notes
+            })
+            .execute()
+        )
+
+        return jsonify({
+            "success": True,
+            "license_key": license_key
+        })
+
+    except Exception as e:
+
+        logger.error(f"Generate License Error: {e}")
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
 @app.route('/license', methods=['GET', 'POST'])
 def license_page():
