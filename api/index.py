@@ -512,6 +512,55 @@ def admin_update_license():
             "message": str(e)
         }), 500
 
+@app.route("/admin/delete-license", methods=["POST"])
+def admin_delete_license():
+
+    if not session.get("admin_logged_in"):
+        return jsonify({
+            "success": False,
+            "message": "Unauthorized"
+        }), 401
+
+    try:
+
+        data = request.get_json(silent=True) or {}
+
+        license_id = data.get("id")
+
+        if not license_id:
+            return jsonify({
+                "success": False,
+                "message": "License ID tidak ditemukan"
+            }), 400
+
+        result = (
+            supabase
+            .table("licenses")
+            .delete()
+            .eq("id", license_id)
+            .execute()
+        )
+
+        if not result.data:
+            return jsonify({
+                "success": False,
+                "message": "License tidak ditemukan"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "message": "License berhasil dihapus"
+        })
+
+    except Exception as e:
+
+        logger.error(f"Delete License Error: {e}")
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
 @app.route('/license', methods=['GET', 'POST'])
 def license_page():
 
