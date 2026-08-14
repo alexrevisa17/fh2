@@ -2129,6 +2129,73 @@ def admin_dashboard():
 
             }
 
+            .label{
+
+    display:block;
+
+    margin-top:15px;
+
+    margin-bottom:7px;
+
+    font-size:12px;
+
+    color:#dfe2e8;
+
+    font-weight:700;
+
+}
+
+input,
+select{
+
+    width:100%;
+
+    height:45px;
+
+    border-radius:10px;
+
+    border:1px solid #343842;
+
+    background:#101217;
+
+    color:white;
+
+    padding:0 12px;
+
+    font-size:14px;
+
+}
+
+button{
+
+    width:100%;
+
+    height:48px;
+
+    margin-top:18px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:#20d76b;
+
+    color:#08110b;
+
+    font-weight:800;
+
+    cursor:pointer;
+
+}
+
+#result{
+
+    margin-top:18px;
+
+    text-align:center;
+
+}
+
         </style>
 
     </head>
@@ -2229,26 +2296,73 @@ def admin_dashboard():
                     🔐 License Manager
                 </div>
 
-                <div class="manager-description">
+                <form id="licenseForm">
 
-                    Panel pembuatan dan pengelolaan license
-                    akan kita tambahkan pada tahap berikutnya.
+    <label class="label">
+        Nama Pembeli
+    </label>
 
-                </div>
+    <input
+        type="text"
+        id="name"
+        placeholder="Nama Pembeli"
+    >
+
+    <label class="label">
+        Durasi
+    </label>
+
+    <select id="duration_days">
+
+        <option value="7">7 Hari</option>
+
+        <option value="30" selected>30 Hari</option>
+
+        <option value="90">90 Hari</option>
+
+        <option value="365">365 Hari</option>
+
+    </select>
 
 
-                <div class="coming">
+    <label class="label">
+        Max Device
+    </label>
 
-                    <strong>
-                        🚀 LICENSE GENERATOR
-                    </strong>
+    <select id="max_devices">
 
-                    Tahap berikutnya kita akan membuat
-                    generator license otomatis, daftar license,
-                    status aktif/nonaktif, copy license,
-                    dan penghapusan license.
+        <option value="1">1 Device</option>
 
-                </div>
+        <option value="2">2 Device</option>
+
+        <option value="3">3 Device</option>
+
+        <option value="5">5 Device</option>
+
+    </select>
+
+
+    <label class="label">
+        Catatan
+    </label>
+
+    <input
+        type="text"
+        id="notes"
+        placeholder="Opsional"
+    >
+
+    <button
+        type="button"
+        id="generateBtn"
+    >
+        🚀 Generate License
+    </button>
+
+</form>
+
+
+<div id="result"></div>
 
             </section>
 
