@@ -450,6 +450,68 @@ def admin_list_license():
             "message": str(e)
         }), 500
 
+@app.route("/admin/update-license", methods=["POST"])
+def admin_update_license():
+
+    if not session.get("admin_logged_in"):
+        return jsonify({
+            "success": False,
+            "message": "Unauthorized"
+        }), 401
+
+    try:
+
+        data = request.get_json(silent=True) or {}
+
+        license_id = data.get("id")
+        status = data.get("status")
+
+        if not license_id:
+            return jsonify({
+                "success": False,
+                "message": "License ID tidak ditemukan"
+            }), 400
+
+        if status not in ["active", "inactive"]:
+            return jsonify({
+                "success": False,
+                "message": "Status license tidak valid"
+            }), 400
+
+        result = (
+            supabase
+            .table("licenses")
+            .update({
+                "status": status
+            })
+            .eq("id", license_id)
+            .execute()
+        )
+
+        if not result.data:
+            return jsonify({
+                "success": False,
+                "message": "License tidak ditemukan"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "message": (
+                "License berhasil diaktifkan"
+                if status == "active"
+                else "License berhasil dinonaktifkan"
+            )
+        })
+
+    except Exception as e:
+
+        logger.error(f"Update License Error: {e}")
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
 @app.route('/license', methods=['GET', 'POST'])
 def license_page():
 
