@@ -79,7 +79,6 @@ def check_license(key):
         )
 
         if datetime.now(timezone.utc) > expires_at:
-
     (
         supabase
         .table("licenses")
@@ -90,9 +89,9 @@ def check_license(key):
         .execute()
     )
 
-        return False
+    return False
 
-        return True
+return True
 
     except Exception as e:
         logger.error(f"License Error: {e}")
