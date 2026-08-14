@@ -39,15 +39,16 @@ def check_license(key):
         if not result.data:
             return False
 
-        license = result.data
+        license_data = result.data
 
-        if not license["active"]:
+        # Status harus ACTIVE
+        if license_data["status"] != "ACTIVE":
             return False
 
         return True
 
     except Exception as e:
-        logger.error(e)
+        logger.error(f"License Error: {e}")
         return False
 
 logging.basicConfig(level=logging.INFO)
