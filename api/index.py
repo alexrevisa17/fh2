@@ -12,6 +12,7 @@ import logging
 import zlib
 import gzip
 from io import BytesIO
+from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -23,7 +24,6 @@ supabase = create_client(
     SUPABASE_URL,
     SUPABASE_KEY
 )
-
 def check_license(key):
     try:
         result = (
@@ -40,9 +40,29 @@ def check_license(key):
 
         license_data = result.data
 
-        # Status harus ACTIVE
-        if license_data["status"] != "active":
+        # Status harus active
+        if license_data["status"].lower() != "active":
             return False
+
+        # Aktivasi pertama
+        if license_data["activated_at"] is None:
+
+            activated = datetime.now(timezone.utc)
+
+            expires = activated + timedelta(
+                days=license_data["duration_days"]
+            )
+
+            (
+                supabase
+                .table("licenses")
+                .update({
+                    "activated_at": activated.isoformat(),
+                    "expires_at": expires.isoformat()
+                })
+                .eq("id", license_data["id"])
+                .execute()
+            )
 
         return True
 
