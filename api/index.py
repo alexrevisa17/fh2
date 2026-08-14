@@ -424,9 +424,21 @@ def admin_list_license():
             .execute()
         )
 
+        licenses = result.data or []
+
+        total_license = len(licenses)
+
+        active_license = sum(
+            1
+            for license in licenses
+            if license.get("status") == "active"
+        )
+
         return jsonify({
             "success": True,
-            "licenses": result.data
+            "licenses": licenses,
+            "total": total_license,
+            "active": active_license
         })
 
     except Exception as e:
