@@ -479,9 +479,12 @@ button{
                         TOTAL LICENSE
                     </div>
 
-                    <div class="card-value">
-                        0
-                    </div>
+                    <div
+    class="card-value"
+    id="totalLicense"
+>
+    0
+</div>
 
                 </div>
 
@@ -496,9 +499,12 @@ button{
                         ACTIVE LICENSE
                     </div>
 
-                    <div class="card-value">
-                        0
-                    </div>
+                    <div
+    class="card-value"
+    id="activeLicense"
+>
+    0
+</div>
 
                 </div>
 
@@ -713,9 +719,19 @@ async function loadLicenses(){
         return;
     }
 
-    let html="";
 
-    data.licenses.forEach(item=>{
+    document.getElementById("totalLicense").innerText =
+        data.total;
+
+
+    document.getElementById("activeLicense").innerText =
+        data.active;
+
+
+    let html = "";
+
+
+    data.licenses.forEach(item => {
 
         html += `
 
@@ -756,6 +772,7 @@ async function loadLicenses(){
         `;
 
     });
+
 
     document.getElementById("licenseList").innerHTML = html;
 
