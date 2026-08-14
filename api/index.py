@@ -402,6 +402,38 @@ def admin_generate_license():
             "message": str(e)
         }), 500
 
+@app.route("/admin/licenses", methods=["GET"])
+def admin_list_license():
+
+    if not session.get("admin_logged_in"):
+        return jsonify({
+            "success": False
+        }), 401
+
+    try:
+
+        result = (
+            supabase
+            .table("licenses")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        return jsonify({
+            "success": True,
+            "licenses": result.data
+        })
+
+    except Exception as e:
+
+        logger.error(f"List License Error: {e}")
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
 @app.route('/license', methods=['GET', 'POST'])
 def license_page():
     if request.method == 'POST':
@@ -2364,6 +2396,18 @@ button{
 
 <div id="result"></div>
 
+<hr style="margin:25px 0;border:none;border-top:1px solid #2c313a;">
+
+<h3 style="margin-bottom:15px;">
+📋 Daftar License
+</h3>
+
+<div id="licenseList">
+
+    Memuat data...
+
+</div>
+
             </section>
 
 
@@ -2475,6 +2519,66 @@ function copyLicense(){
     alert("License berhasil disalin");
 
 }
+
+async function loadLicenses(){
+
+    const response = await fetch("/admin/licenses");
+
+    const data = await response.json();
+
+    if(!data.success){
+        return;
+    }
+
+    let html="";
+
+    data.licenses.forEach(item=>{
+
+        html += `
+
+        <div style="
+            background:#101217;
+            padding:15px;
+            border-radius:12px;
+            margin-bottom:10px;
+            border:1px solid #2d333d;
+        ">
+
+            <div style="
+                color:#45e58a;
+                font-weight:bold;
+                word-break:break-all;
+            ">
+                ${item.license_key}
+            </div>
+
+            <div style="margin-top:8px;font-size:13px;">
+                👤 ${item.name}
+            </div>
+
+            <div style="margin-top:4px;font-size:13px;">
+                📅 ${item.duration_days} Hari
+            </div>
+
+            <div style="margin-top:4px;font-size:13px;">
+                📱 ${item.max_devices} Device
+            </div>
+
+            <div style="margin-top:4px;font-size:13px;">
+                ✅ ${item.status}
+            </div>
+
+        </div>
+
+        `;
+
+    });
+
+    document.getElementById("licenseList").innerHTML = html;
+
+}
+
+loadLicenses();
 
 </script>
 
