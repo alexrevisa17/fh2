@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, render_template_string, session, redirect
+from supabase import create_client
 import requests
 import re
 import json
@@ -15,6 +16,39 @@ from io import BytesIO
 app = Flask(__name__)
 app.secret_key = "belajar-flask-license-123"
 LICENSE_KEY = "FAPHOUSE-FJ7TV-DHV4G"
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
+
+def check_license(key):
+    try:
+        result = (
+            supabase
+            .table("licenses")
+            .select("*")
+            .eq("license_key", key)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            return False
+
+        license = result.data
+
+        if not license["active"]:
+            return False
+
+        return True
+
+    except Exception as e:
+        logger.error(e)
+        return False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
