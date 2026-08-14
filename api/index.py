@@ -519,6 +519,18 @@ def index():
         <body>
             <div class="container">
                 <h1>🎬 Faphouse Player</h1>
+                <div style="text-align:right;margin-bottom:15px;">
+    <a href="/logout"
+       style="
+            background:#d32f2f;
+            color:white;
+            padding:10px 18px;
+            border-radius:8px;
+            text-decoration:none;
+            font-weight:bold;">
+        🚪 Logout License
+    </a>
+</div>
                 <p class="subtitle">Enter any video URL to watch</p>
                 
                 <div class="url-input">
