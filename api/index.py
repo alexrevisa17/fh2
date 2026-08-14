@@ -14,8 +14,7 @@ import gzip
 from io import BytesIO
 
 app = Flask(__name__)
-app.secret_key = "belajar-flask-license-123"
-LICENSE_KEY = "FAPHOUSE-FJ7TV-DHV4G"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
