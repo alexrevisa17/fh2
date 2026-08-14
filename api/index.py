@@ -18,7 +18,7 @@ app.secret_key = "belajar-flask-license-123"
 LICENSE_KEY = "FAPHOUSE-FJ7TV-DHV4G"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 supabase = create_client(
     SUPABASE_URL,
