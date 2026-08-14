@@ -24,6 +24,7 @@ supabase = create_client(
     SUPABASE_URL,
     SUPABASE_KEY
 )
+
 def check_license(key):
     try:
         result = (
@@ -45,7 +46,6 @@ def check_license(key):
             return False
 
         # Aktivasi pertama
-        logger.info(f"License ditemukan: {license_data}")
         if license_data["activated_at"] is None:
 
             activated = datetime.now(timezone.utc)
@@ -57,26 +57,24 @@ def check_license(key):
             (
                 supabase
                 .table("licenses")
-                logger.info("Mengaktifkan license pertama kali...")
                 .update({
                     "activated_at": activated.isoformat(),
                     "expires_at": expires.isoformat()
                 })
                 .eq("id", license_data["id"])
                 .execute()
-                update_result = (
-    supabase
-    .table("licenses")
-    .update({
-        "activated_at": activated.isoformat(),
-        "expires_at": expires.isoformat()
-    })
-    .eq("id", license_data["id"])
-    .execute()
-)
-
-logger.info(f"Update result: {update_result}")
             )
+
+            # Update data lokal agar bisa langsung dicek
+            license_data["expires_at"] = expires.isoformat()
+
+        # Cek apakah lisensi sudah expired
+        expires_at = datetime.fromisoformat(
+            license_data["expires_at"].replace("Z", "+00:00")
+        )
+
+        if datetime.now(timezone.utc) > expires_at:
+            return False
 
         return True
 
