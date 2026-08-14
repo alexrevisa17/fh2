@@ -575,6 +575,11 @@ def admin_delete_license():
 @app.route('/license', methods=['GET', 'POST'])
 def license_page():
 
+    key = session.get("license_key")
+
+    if key and check_license(key):
+        return redirect("/")
+
     if request.method == 'POST':
 
         key = request.form.get("license", "").strip()
@@ -585,6 +590,7 @@ def license_page():
 
         if check_license(key):
             session["licensed"] = True
+            session["license_key"] = key
             return redirect("/")
 
         return render_template(
@@ -637,9 +643,16 @@ def admin_logout():
 
     return redirect("/admin")
 
-@app.route('/')
+@app.route("/")
 def index():
-    if not session.get("licensed"):
+
+    key = session.get("license_key")
+
+    if not key:
+        return redirect("/license")
+
+    if not check_license(key):
+        session.clear()
         return redirect("/license")
 
     return render_template_string("""
