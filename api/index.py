@@ -70,7 +70,7 @@ def check_license(key):
                 .execute()
             )
 
-            # Update data lokal agar bisa langsung dicek
+            # Update data lokal
             license_data["expires_at"] = expires.isoformat()
 
         # Cek apakah lisensi sudah expired
@@ -79,19 +79,20 @@ def check_license(key):
         )
 
         if datetime.now(timezone.utc) > expires_at:
-    (
-        supabase
-        .table("licenses")
-        .update({
-            "status": "expired"
-        })
-        .eq("id", license_data["id"])
-        .execute()
-    )
 
-    return False
+            (
+                supabase
+                .table("licenses")
+                .update({
+                    "status": "expired"
+                })
+                .eq("id", license_data["id"])
+                .execute()
+            )
 
-return True
+            return False
+
+        return True
 
     except Exception as e:
         logger.error(f"License Error: {e}")
