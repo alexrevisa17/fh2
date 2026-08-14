@@ -176,9 +176,11 @@ class FaphouseClient:
                 
                 if response.status_code == 200:
                     html = self._decode_response(response)
+                    
                     logger.info("========== HTML START ==========")
-logger.info(html[:5000])
-logger.info("========== HTML END ==========")
+                    logger.info(html[:5000])
+                    logger.info("========== HTML END ==========")
+
                     if html:
                         m3u8 = self._extract_m3u8(html)
                         if m3u8:
@@ -206,9 +208,11 @@ logger.info("========== HTML END ==========")
             
             if response.status_code == 200:
                 html = self._decode_response(response)
+
                 logger.info("========== HTML START ==========")
-logger.info(html[:5000])
-logger.info("========== HTML END ==========")
+                logger.info(html[:5000] if html else "HTML kosong")
+                logger.info("========== HTML END ==========")
+    
                 if html:
                     m3u8 = self._extract_m3u8(html)
                     if m3u8:
