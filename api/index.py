@@ -3,6 +3,7 @@ import requests
 import re
 import json
 import os
+import hmac
 from functools import lru_cache
 from datetime import datetime, timedelta
 import time
@@ -1073,6 +1074,1080 @@ def license_page():
     </body>
     </html>
     """)
+
+@app.route('/admin', methods=['GET', 'POST'])
+def admin_login():
+
+    # Jika sudah login admin
+    if session.get("admin_logged_in"):
+        return redirect("/admin/dashboard")
+
+    if request.method == 'POST':
+
+        pin = request.form.get("pin", "").strip()
+
+        admin_pin = os.environ.get("ADMIN_PIN", "")
+
+        if admin_pin and hmac.compare_digest(pin, admin_pin):
+
+            session["admin_logged_in"] = True
+
+            return redirect("/admin/dashboard")
+
+        error = True
+
+    else:
+        error = False
+
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html lang="id">
+
+    <head>
+
+        <meta charset="UTF-8">
+
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        >
+
+        <title>Admin Login - Lapak Angker</title>
+
+        <style>
+
+            * {
+                box-sizing: border-box;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                min-height: 100%;
+            }
+
+            body {
+
+                min-height: 100vh;
+                min-height: 100dvh;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                padding: 24px 16px;
+
+                background: #08090d;
+
+                color: #fff;
+
+                font-family:
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    Roboto,
+                    Arial,
+                    sans-serif;
+
+                position: relative;
+
+                overflow: hidden;
+            }
+
+
+            /* Background Glow */
+
+            body::before {
+
+                content: "";
+
+                position: fixed;
+
+                width: 420px;
+                height: 420px;
+
+                top: -200px;
+                left: -180px;
+
+                background: rgba(0,255,140,0.07);
+
+                filter: blur(100px);
+
+                border-radius: 50%;
+
+                pointer-events: none;
+            }
+
+
+            body::after {
+
+                content: "";
+
+                position: fixed;
+
+                width: 380px;
+                height: 380px;
+
+                right: -180px;
+                bottom: -200px;
+
+                background: rgba(80,100,255,0.07);
+
+                filter: blur(110px);
+
+                border-radius: 50%;
+
+                pointer-events: none;
+            }
+
+
+            .container {
+
+                width: 100%;
+
+                max-width: 410px;
+
+                position: relative;
+
+                z-index: 2;
+            }
+
+
+            .box {
+
+                width: 100%;
+
+                padding: 32px 26px 26px;
+
+                background: rgba(22,24,31,0.95);
+
+                border: 1px solid rgba(255,255,255,0.08);
+
+                border-radius: 24px;
+
+                text-align: center;
+
+                box-shadow:
+                    0 25px 70px rgba(0,0,0,0.55),
+                    inset 0 1px 0 rgba(255,255,255,0.04);
+
+                backdrop-filter: blur(18px);
+
+                -webkit-backdrop-filter: blur(18px);
+            }
+
+
+            .logo {
+
+                width: 76px;
+                height: 76px;
+
+                margin: 0 auto 18px;
+
+                display: flex;
+
+                align-items: center;
+
+                justify-content: center;
+
+                border-radius: 22px;
+
+                font-size: 36px;
+
+                background:
+                    linear-gradient(
+                        145deg,
+                        #1ed760,
+                        #0aa85a
+                    );
+
+                box-shadow:
+                    0 12px 30px rgba(30,215,96,0.22),
+                    inset 0 1px 0 rgba(255,255,255,0.25);
+            }
+
+
+            h1 {
+
+                margin: 0;
+
+                font-size: 25px;
+
+                line-height: 1.2;
+
+                font-weight: 800;
+
+                letter-spacing: 1.3px;
+            }
+
+
+            .subtitle {
+
+                margin: 9px 0 0;
+
+                color: #9297a5;
+
+                font-size: 13px;
+            }
+
+
+            .brand {
+
+                margin-top: 11px;
+
+                color: #45e58a;
+
+                font-size: 11px;
+            }
+
+
+            .divider {
+
+                height: 1px;
+
+                margin: 25px 0;
+
+                background:
+                    linear-gradient(
+                        90deg,
+                        transparent,
+                        rgba(255,255,255,0.1),
+                        transparent
+                    );
+            }
+
+
+            .error {
+
+                display: flex;
+
+                align-items: center;
+
+                gap: 9px;
+
+                margin-bottom: 18px;
+
+                padding: 12px;
+
+                border-radius: 12px;
+
+                background: rgba(255,70,70,0.08);
+
+                border: 1px solid rgba(255,70,70,0.18);
+
+                color: #ff7777;
+
+                font-size: 12px;
+
+                text-align: left;
+            }
+
+
+            .label {
+
+                display: block;
+
+                text-align: left;
+
+                margin-bottom: 9px;
+
+                color: #dfe2e8;
+
+                font-size: 13px;
+
+                font-weight: 700;
+            }
+
+
+            .input-wrapper {
+
+                position: relative;
+            }
+
+
+            .input-icon {
+
+                position: absolute;
+
+                left: 15px;
+
+                top: 50%;
+
+                transform: translateY(-50%);
+
+                font-size: 17px;
+
+                opacity: 0.7;
+
+                pointer-events: none;
+            }
+
+
+            input {
+
+                display: block;
+
+                width: 100%;
+
+                height: 52px;
+
+                padding: 0 15px 0 45px;
+
+                border-radius: 13px;
+
+                border: 1px solid #343842;
+
+                outline: none;
+
+                background: #101217;
+
+                color: #fff;
+
+                font-family: inherit;
+
+                font-size: 16px;
+
+                letter-spacing: 3px;
+
+                transition:
+                    border-color 0.2s ease,
+                    box-shadow 0.2s ease,
+                    background 0.2s ease;
+
+                -webkit-appearance: none;
+
+                appearance: none;
+            }
+
+
+            input:focus {
+
+                border-color: #20d76b;
+
+                background: #12151a;
+
+                box-shadow:
+                    0 0 0 3px rgba(32,215,107,0.10),
+                    0 8px 25px rgba(0,0,0,0.2);
+            }
+
+
+            input::placeholder {
+
+                color: #666b76;
+
+                font-size: 12px;
+
+                letter-spacing: 1px;
+            }
+
+
+            button {
+
+                width: 100%;
+
+                height: 52px;
+
+                margin-top: 14px;
+
+                border: 0;
+
+                border-radius: 13px;
+
+                background:
+                    linear-gradient(
+                        135deg,
+                        #20d76b,
+                        #0eb85a
+                    );
+
+                color: #06130b;
+
+                font-family: inherit;
+
+                font-size: 14px;
+
+                font-weight: 800;
+
+                letter-spacing: 0.5px;
+
+                cursor: pointer;
+
+                box-shadow:
+                    0 10px 25px rgba(32,215,107,0.18),
+                    inset 0 1px 0 rgba(255,255,255,0.25);
+
+                transition: transform 0.15s ease;
+
+                -webkit-appearance: none;
+
+                appearance: none;
+            }
+
+
+            button:active {
+
+                transform: scale(0.98);
+            }
+
+
+            .security {
+
+                margin-top: 22px;
+
+                padding: 12px;
+
+                border-radius: 12px;
+
+                background: rgba(255,255,255,0.025);
+
+                border: 1px solid rgba(255,255,255,0.05);
+
+                color: #686e7a;
+
+                font-size: 10px;
+
+                line-height: 1.6;
+            }
+
+
+            .footer {
+
+                margin-top: 20px;
+
+                color: #4f545e;
+
+                font-size: 9px;
+
+                line-height: 1.6;
+            }
+
+
+            @media (max-width: 380px) {
+
+                body {
+                    padding: 16px 12px;
+                }
+
+                .box {
+
+                    padding: 26px 18px 22px;
+
+                    border-radius: 20px;
+                }
+
+                .logo {
+
+                    width: 68px;
+                    height: 68px;
+
+                    font-size: 33px;
+                }
+
+                h1 {
+                    font-size: 22px;
+                }
+            }
+
+        </style>
+
+    </head>
+
+
+    <body>
+
+        <main class="container">
+
+            <section class="box">
+
+                <div class="logo">
+                    🛡️
+                </div>
+
+                <h1>
+                    ADMIN PANEL
+                </h1>
+
+                <p class="subtitle">
+                    Secure License Management
+                </p>
+
+                <p class="brand">
+                    Powered by <b>LAPAK ANGKER</b>
+                </p>
+
+                <div class="divider"></div>
+
+                {% if error %}
+
+                <div class="error">
+
+                    <span>❌</span>
+
+                    <span>
+                        PIN admin salah. Silakan coba kembali.
+                    </span>
+
+                </div>
+
+                {% endif %}
+
+                <form method="POST">
+
+                    <label class="label">
+                        🔐 Administrator PIN
+                    </label>
+
+                    <div class="input-wrapper">
+
+                        <span class="input-icon">
+                            🔑
+                        </span>
+
+                        <input
+                            type="password"
+                            name="pin"
+                            placeholder="Masukkan PIN admin"
+                            inputmode="numeric"
+                            autocomplete="off"
+                            required
+                        >
+
+                    </div>
+
+                    <button type="submit">
+                        🔓 LOGIN ADMIN
+                    </button>
+
+                </form>
+
+                <div class="security">
+
+                    🛡️ Secure administrator access<br>
+
+                    Only authorized administrators can access this panel.
+
+                </div>
+
+                <div class="footer">
+
+                    © 2026 LAPAK ANGKER<br>
+
+                    All Rights Reserved
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </body>
+
+    </html>
+    """, error=error)
+
+@app.route('/admin/dashboard')
+def admin_dashboard():
+
+    if not session.get("admin_logged_in"):
+        return redirect("/admin")
+
+    return render_template_string("""
+    <!DOCTYPE html>
+
+    <html lang="id">
+
+    <head>
+
+        <meta charset="UTF-8">
+
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        >
+
+        <title>Admin Dashboard - Lapak Angker</title>
+
+        <style>
+
+            * {
+                box-sizing: border-box;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            body {
+
+                margin: 0;
+
+                min-height: 100vh;
+                min-height: 100dvh;
+
+                background: #08090d;
+
+                color: white;
+
+                font-family:
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    Roboto,
+                    Arial,
+                    sans-serif;
+
+                padding: 20px 16px;
+            }
+
+
+            .page {
+
+                width: 100%;
+
+                max-width: 700px;
+
+                margin: auto;
+            }
+
+
+            .header {
+
+                display: flex;
+
+                align-items: center;
+
+                justify-content: space-between;
+
+                margin-bottom: 16px;
+            }
+
+
+            .brand {
+
+                display: flex;
+
+                align-items: center;
+
+                gap: 11px;
+            }
+
+
+            .brand-icon {
+
+                width: 45px;
+                height: 45px;
+
+                display: flex;
+
+                align-items: center;
+
+                justify-content: center;
+
+                border-radius: 13px;
+
+                background:
+                    linear-gradient(
+                        145deg,
+                        #1ed760,
+                        #0aa85a
+                    );
+
+                font-size: 21px;
+            }
+
+
+            .brand-title {
+
+                font-size: 15px;
+
+                font-weight: 800;
+            }
+
+
+            .brand-subtitle {
+
+                margin-top: 3px;
+
+                color: #666c78;
+
+                font-size: 10px;
+            }
+
+
+            .logout {
+
+                padding: 9px 12px;
+
+                border-radius: 10px;
+
+                border:
+                    1px solid rgba(255,80,80,0.18);
+
+                background:
+                    rgba(255,70,70,0.08);
+
+                color: #ff7777;
+
+                text-decoration: none;
+
+                font-size: 10px;
+
+                font-weight: 800;
+            }
+
+
+            .hero {
+
+                padding: 24px 20px;
+
+                border-radius: 20px;
+
+                background:
+                    rgba(22,24,31,0.94);
+
+                border:
+                    1px solid rgba(255,255,255,0.08);
+
+                box-shadow:
+                    0 20px 55px rgba(0,0,0,0.45),
+                    inset 0 1px 0 rgba(255,255,255,0.04);
+
+                margin-bottom: 12px;
+            }
+
+
+            .hero h1 {
+
+                margin: 0;
+
+                font-size: 23px;
+
+                letter-spacing: 0.8px;
+            }
+
+
+            .hero p {
+
+                margin: 8px 0 0;
+
+                color: #858b97;
+
+                font-size: 12px;
+            }
+
+
+            .cards {
+
+                display: grid;
+
+                grid-template-columns:
+                    repeat(2, 1fr);
+
+                gap: 10px;
+
+                margin-bottom: 12px;
+            }
+
+
+            .card {
+
+                padding: 17px;
+
+                border-radius: 15px;
+
+                background:
+                    rgba(22,24,31,0.94);
+
+                border:
+                    1px solid rgba(255,255,255,0.07);
+            }
+
+
+            .card-icon {
+
+                font-size: 20px;
+
+                margin-bottom: 9px;
+            }
+
+
+            .card-label {
+
+                color: #666c78;
+
+                font-size: 10px;
+            }
+
+
+            .card-value {
+
+                margin-top: 5px;
+
+                font-size: 20px;
+
+                font-weight: 800;
+
+                color: #45e58a;
+            }
+
+
+            .manager {
+
+                padding: 20px;
+
+                border-radius: 18px;
+
+                background:
+                    rgba(22,24,31,0.94);
+
+                border:
+                    1px solid rgba(255,255,255,0.07);
+            }
+
+
+            .manager-title {
+
+                display: flex;
+
+                align-items: center;
+
+                gap: 9px;
+
+                color: #dfe2e8;
+
+                font-size: 14px;
+
+                font-weight: 800;
+            }
+
+
+            .manager-description {
+
+                margin-top: 7px;
+
+                color: #666c78;
+
+                font-size: 11px;
+
+                line-height: 1.6;
+            }
+
+
+            .coming {
+
+                margin-top: 17px;
+
+                padding: 16px;
+
+                border-radius: 13px;
+
+                background:
+                    rgba(32,215,107,0.04);
+
+                border:
+                    1px dashed rgba(32,215,107,0.16);
+
+                text-align: center;
+
+                color: #686e7a;
+
+                font-size: 11px;
+
+                line-height: 1.7;
+            }
+
+
+            .coming strong {
+
+                display: block;
+
+                color: #45e58a;
+
+                margin-bottom: 4px;
+            }
+
+
+            .footer {
+
+                text-align: center;
+
+                margin-top: 18px;
+
+                color: #4f545e;
+
+                font-size: 9px;
+
+                line-height: 1.6;
+            }
+
+
+            @media (max-width: 380px) {
+
+                body {
+                    padding: 16px 12px;
+                }
+
+                .hero {
+                    padding: 21px 17px;
+                }
+
+                .cards {
+                    gap: 7px;
+                }
+
+                .card {
+                    padding: 14px;
+                }
+
+            }
+
+        </style>
+
+    </head>
+
+
+    <body>
+
+        <main class="page">
+
+
+            <header class="header">
+
+                <div class="brand">
+
+                    <div class="brand-icon">
+                        🎛️
+                    </div>
+
+                    <div>
+
+                        <div class="brand-title">
+                            LAPAK ANGKER
+                        </div>
+
+                        <div class="brand-subtitle">
+                            Administrator Control
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <a
+                    href="/admin/logout"
+                    class="logout"
+                >
+                    🚪 Logout
+                </a>
+
+            </header>
+
+
+            <section class="hero">
+
+                <h1>
+                    License Dashboard
+                </h1>
+
+                <p>
+                    Kelola license Faphouse Player dari satu tempat.
+                </p>
+
+            </section>
+
+
+            <section class="cards">
+
+                <div class="card">
+
+                    <div class="card-icon">
+                        🔑
+                    </div>
+
+                    <div class="card-label">
+                        TOTAL LICENSE
+                    </div>
+
+                    <div class="card-value">
+                        0
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-icon">
+                        🟢
+                    </div>
+
+                    <div class="card-label">
+                        ACTIVE LICENSE
+                    </div>
+
+                    <div class="card-value">
+                        0
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <section class="manager">
+
+                <div class="manager-title">
+                    🔐 License Manager
+                </div>
+
+                <div class="manager-description">
+
+                    Panel pembuatan dan pengelolaan license
+                    akan kita tambahkan pada tahap berikutnya.
+
+                </div>
+
+
+                <div class="coming">
+
+                    <strong>
+                        🚀 LICENSE GENERATOR
+                    </strong>
+
+                    Tahap berikutnya kita akan membuat
+                    generator license otomatis, daftar license,
+                    status aktif/nonaktif, copy license,
+                    dan penghapusan license.
+
+                </div>
+
+            </section>
+
+
+            <div class="footer">
+
+                © 2026 LAPAK ANGKER<br>
+
+                Administrator Panel
+
+            </div>
+
+
+        </main>
+
+    </body>
+
+    </html>
+    """)
+
+@app.route('/admin/logout')
+def admin_logout():
+
+    session.pop("admin_logged_in", None)
+
+    return redirect("/admin")
 
 @app.route('/')
 def index():
