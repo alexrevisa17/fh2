@@ -79,7 +79,18 @@ def check_license(key):
         )
 
         if datetime.now(timezone.utc) > expires_at:
-            return False
+
+    (
+        supabase
+        .table("licenses")
+        .update({
+            "status": "expired"
+        })
+        .eq("id", license_data["id"])
+        .execute()
+    )
+
+    return False
 
         return True
 
