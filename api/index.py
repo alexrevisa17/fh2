@@ -126,6 +126,87 @@ def check_license(key):
         logger.error(f"License Error: {e}")
         return False
 
+def register_device(license_key, device_id):
+    try:
+
+        # Ambil data lisensi
+        result = (
+            supabase
+            .table("licenses")
+            .select("*")
+            .eq("license_key", license_key)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            return False
+
+        license_data = result.data
+        license_id = license_data["id"]
+
+        # Cek apakah device sudah pernah terdaftar
+        device = (
+            supabase
+            .table("license_devices")
+            .select("*")
+            .eq("license_id", license_id)
+            .eq("device_id", device_id)
+            .execute()
+        )
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Device sudah ada → update last_seen
+        if device.data:
+
+            (
+                supabase
+                .table("license_devices")
+                .update({
+                    "last_seen": now
+                })
+                .eq("id", device.data[0]["id"])
+                .execute()
+            )
+
+            return True
+
+        # Hitung jumlah device yang sudah terdaftar
+        devices = (
+            supabase
+            .table("license_devices")
+            .select("id")
+            .eq("license_id", license_id)
+            .execute()
+        )
+
+        used_devices = len(devices.data or [])
+
+        if used_devices >= license_data["max_devices"]:
+            return False
+
+        # Daftarkan device baru
+        (
+            supabase
+            .table("license_devices")
+            .insert({
+                "license_id": license_id,
+                "device_id": device_id,
+                "device_name": request.user_agent.string[:120],
+                "platform": request.user_agent.platform,
+                "first_seen": now,
+                "last_seen": now
+            })
+            .execute()
+        )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Register Device Error: {e}")
+        return False
+
 def generate_license_key():
     chars = string.ascii_uppercase + string.digits
 
@@ -617,9 +698,18 @@ def license_page():
 ).strip()
 
         if check_license(key):
-            session["licensed"] = True
-            session["license_key"] = key
-            return redirect("/")
+
+    if not register_device(key, device_id):
+        return render_template(
+            "license.html",
+            error=True,
+            message="Batas maksimum perangkat telah tercapai."
+        )
+
+    session["licensed"] = True
+    session["license_key"] = key
+
+    return redirect("/")
 
         return render_template(
             "license.html",
