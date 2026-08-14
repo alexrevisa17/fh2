@@ -1077,140 +1077,922 @@ def license_page():
 @app.route('/')
 def index():
     if not session.get("licensed"):
-       return redirect("/license")
-    
+        return redirect("/license")
+
     return render_template_string("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>🎬 Faphouse Player</title>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+        <meta charset="UTF-8">
+
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        >
+
+        <title>🎬 Faphouse Player</title>
+
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            html, body {
+                width: 100%;
+                min-height: 100%;
+            }
+
+            body {
+                background: #08090d;
+                color: #fff;
+                font-family:
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    Roboto,
+                    Arial,
+                    sans-serif;
+
+                min-height: 100vh;
+                min-height: 100dvh;
+
+                padding: 24px 16px;
+
+                position: relative;
+                overflow-x: hidden;
+            }
+
+            /* Background glow */
+
+            body::before {
+                content: "";
+                position: fixed;
+
+                width: 430px;
+                height: 430px;
+
+                top: -220px;
+                left: -180px;
+
+                background: rgba(0, 255, 140, 0.07);
+
+                filter: blur(100px);
+                border-radius: 50%;
+
+                pointer-events: none;
+            }
+
+            body::after {
+                content: "";
+                position: fixed;
+
+                width: 400px;
+                height: 400px;
+
+                right: -180px;
+                bottom: -200px;
+
+                background: rgba(70, 90, 255, 0.06);
+
+                filter: blur(110px);
+                border-radius: 50%;
+
+                pointer-events: none;
+            }
+
+            .page {
+                width: 100%;
+                max-width: 600px;
+
+                margin: 0 auto;
+
+                position: relative;
+                z-index: 2;
+            }
+
+            /* =========================
+               MAIN PLAYER
+            ========================= */
+
+            .player-box {
+                width: 100%;
+
+                background: rgba(22, 24, 31, 0.94);
+
+                border: 1px solid rgba(255,255,255,0.08);
+
+                border-radius: 24px;
+
+                padding: 32px 26px;
+
+                box-shadow:
+                    0 25px 70px rgba(0,0,0,0.55),
+                    inset 0 1px 0 rgba(255,255,255,0.04);
+
+                backdrop-filter: blur(18px);
+                -webkit-backdrop-filter: blur(18px);
+
+                text-align: center;
+            }
+
+            .logo {
+                width: 76px;
+                height: 76px;
+
+                margin: 0 auto 18px;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                border-radius: 22px;
+
+                font-size: 38px;
+
+                background:
+                    linear-gradient(
+                        145deg,
+                        #1ed760,
+                        #0aa85a
+                    );
+
+                box-shadow:
+                    0 12px 30px rgba(30,215,96,0.22),
+                    inset 0 1px 0 rgba(255,255,255,0.25);
+            }
+
+            h1 {
+                font-size: 28px;
+                line-height: 1.2;
+
+                font-weight: 800;
+
+                letter-spacing: 1.3px;
+
+                margin: 0;
+            }
+
+            .subtitle {
+                color: #9297a5;
+
+                font-size: 14px;
+
+                margin-top: 9px;
+
+                line-height: 1.5;
+            }
+
+            .brand {
+                color: #45e58a;
+
+                font-size: 12px;
+
+                margin-top: 11px;
+
+                letter-spacing: 0.4px;
+            }
+
+            .divider {
+                height: 1px;
+
+                border: 0;
+
+                margin: 25px 0;
+
+                background:
+                    linear-gradient(
+                        90deg,
+                        transparent,
+                        rgba(255,255,255,0.1),
+                        transparent
+                    );
+            }
+
+            /* =========================
+               URL FORM
+            ========================= */
+
+            .form-title {
+                text-align: left;
+
+                color: #dfe2e8;
+
+                font-size: 13px;
+
+                font-weight: 700;
+
+                margin-bottom: 9px;
+            }
+
+            .url-input {
+                width: 100%;
+            }
+
+            .url-wrapper {
+                position: relative;
+                width: 100%;
+            }
+
+            .url-icon {
+                position: absolute;
+
+                left: 15px;
+                top: 50%;
+
+                transform: translateY(-50%);
+
+                font-size: 17px;
+
+                opacity: 0.7;
+
+                pointer-events: none;
+            }
+
+            .url-input input {
+                display: block;
+
+                width: 100%;
+                height: 52px;
+
+                padding: 0 15px 0 45px;
+
+                background: #101217;
+
+                border: 1px solid #343842;
+
+                border-radius: 13px;
+
+                color: #fff;
+
+                font-family: inherit;
+
+                font-size: 16px;
+
+                outline: none;
+
+                transition:
+                    border-color 0.2s ease,
+                    box-shadow 0.2s ease,
+                    background 0.2s ease;
+
+                -webkit-appearance: none;
+                appearance: none;
+            }
+
+            .url-input input::placeholder {
+                color: #666b76;
+                font-size: 14px;
+            }
+
+            .url-input input:focus {
+                border-color: #20d76b;
+
+                background: #12151a;
+
+                box-shadow:
+                    0 0 0 3px rgba(32,215,107,0.10),
+                    0 8px 25px rgba(0,0,0,0.2);
+            }
+
+            .watch-button {
+                width: 100%;
+                height: 52px;
+
+                margin-top: 14px;
+
+                border: none;
+
+                border-radius: 13px;
+
+                background:
+                    linear-gradient(
+                        135deg,
+                        #20d76b,
+                        #0eb85a
+                    );
+
+                color: #06130b;
+
+                font-family: inherit;
+
+                font-size: 14px;
+
+                font-weight: 800;
+
+                letter-spacing: 0.5px;
+
+                cursor: pointer;
+
+                box-shadow:
+                    0 10px 25px rgba(32,215,107,0.18),
+                    inset 0 1px 0 rgba(255,255,255,0.25);
+
+                transition:
+                    transform 0.15s ease,
+                    filter 0.15s ease;
+
+                -webkit-appearance: none;
+                appearance: none;
+            }
+
+            .watch-button:active {
+                transform: scale(0.98);
+                filter: brightness(0.92);
+            }
+
+            /* =========================
+               HINT
+            ========================= */
+
+            .hint {
+                margin-top: 14px;
+
+                color: #686e7a;
+
+                font-size: 11px;
+
+                line-height: 1.7;
+
+                text-align: left;
+            }
+
+            .hint code {
+                display: block;
+
+                margin-top: 6px;
+
+                padding: 9px 10px;
+
+                background: #101217;
+
+                border: 1px solid rgba(255,255,255,0.05);
+
+                border-radius: 9px;
+
+                color: #777e8b;
+
+                font-size: 10px;
+
+                line-height: 1.5;
+
+                word-break: break-all;
+            }
+
+            /* =========================
+               API ENDPOINTS
+            ========================= */
+
+            .endpoints {
+                margin-top: 25px;
+
+                padding: 18px;
+
+                background: rgba(255,255,255,0.025);
+
+                border: 1px solid rgba(255,255,255,0.06);
+
+                border-radius: 15px;
+
+                text-align: left;
+            }
+
+            .endpoints-header {
+                display: flex;
+
+                align-items: center;
+
+                gap: 8px;
+
+                margin-bottom: 13px;
+            }
+
+            .endpoints-icon {
+                font-size: 18px;
+            }
+
+            .endpoints h3 {
+                color: #d8dbe1;
+
+                font-size: 13px;
+
+                font-weight: 700;
+            }
+
+            .endpoint {
+                padding: 11px 0;
+
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+
+                color: #858b97;
+
+                font-size: 11px;
+
+                line-height: 1.5;
+            }
+
+            .endpoint:last-child {
+                border-bottom: none;
+                padding-bottom: 0;
+            }
+
+            .endpoint:first-of-type {
+                padding-top: 0;
+            }
+
+            .endpoint strong {
+                color: #45e58a;
+
+                font-size: 10px;
+
+                margin-right: 5px;
+            }
+
+            /* =========================
+               ACCOUNT PANEL
+            ========================= */
+
+            .account-box {
+                width: 100%;
+
+                margin-top: 16px;
+
+                padding: 22px 20px 20px;
+
+                background: rgba(22, 24, 31, 0.94);
+
+                border: 1px solid rgba(255,255,255,0.08);
+
+                border-radius: 20px;
+
+                box-shadow:
+                    0 18px 45px rgba(0,0,0,0.35),
+                    inset 0 1px 0 rgba(255,255,255,0.03);
+
+                backdrop-filter: blur(18px);
+                -webkit-backdrop-filter: blur(18px);
+            }
+
+            .account-header {
+                display: flex;
+
+                align-items: center;
+
+                justify-content: space-between;
+
+                margin-bottom: 18px;
+            }
+
+            .account-title {
+                display: flex;
+
+                align-items: center;
+
+                gap: 11px;
+            }
+
+            .account-icon {
+                width: 40px;
+                height: 40px;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                border-radius: 12px;
+
+                background: rgba(32,215,107,0.10);
+
+                border: 1px solid rgba(32,215,107,0.15);
+
+                font-size: 20px;
+            }
+
+            .account-heading {
+                color: #fff;
+
+                font-size: 14px;
+
+                font-weight: 800;
+            }
+
+            .account-subheading {
+                color: #686e7a;
+
+                font-size: 10px;
+
+                margin-top: 3px;
+            }
+
+            .status {
+                display: inline-flex;
+
+                align-items: center;
+
+                gap: 5px;
+
+                padding: 6px 9px;
+
+                border-radius: 20px;
+
+                background: rgba(32,215,107,0.08);
+
+                border: 1px solid rgba(32,215,107,0.15);
+
+                color: #45e58a;
+
+                font-size: 9px;
+
+                font-weight: 800;
+
+                letter-spacing: 0.4px;
+            }
+
+            .status-dot {
+                width: 6px;
+                height: 6px;
+
+                border-radius: 50%;
+
+                background: #20d76b;
+
+                box-shadow: 0 0 8px rgba(32,215,107,0.8);
+            }
+
+            .account-info {
+                display: grid;
+
+                grid-template-columns: 1fr 1fr;
+
+                gap: 8px;
+
+                margin-bottom: 18px;
+            }
+
+            .info-item {
+                padding: 12px;
+
+                background: rgba(255,255,255,0.025);
+
+                border: 1px solid rgba(255,255,255,0.05);
+
+                border-radius: 12px;
+            }
+
+            .info-label {
+                color: #666c78;
+
+                font-size: 9px;
+
+                margin-bottom: 5px;
+            }
+
+            .info-value {
+                color: #dfe2e8;
+
+                font-size: 11px;
+
+                font-weight: 700;
+            }
+
+            .info-value.active {
+                color: #45e58a;
+            }
+
+            .logout-button {
+                display: flex;
+
+                align-items: center;
+                justify-content: center;
+
+                width: 100%;
+                height: 48px;
+
+                border-radius: 12px;
+
+                background:
+                    linear-gradient(
+                        135deg,
+                        rgba(255,70,70,0.12),
+                        rgba(180,40,40,0.10)
+                    );
+
+                border: 1px solid rgba(255,80,80,0.18);
+
+                color: #ff7777;
+
+                text-decoration: none;
+
+                font-size: 12px;
+
+                font-weight: 800;
+
+                letter-spacing: 0.3px;
+
+                transition:
+                    background 0.2s ease,
+                    transform 0.15s ease;
+            }
+
+            .logout-button:active {
+                transform: scale(0.98);
+
+                background:
+                    rgba(255,70,70,0.18);
+            }
+
+            .account-footer {
+                margin-top: 17px;
+
+                text-align: center;
+
+                color: #4f545e;
+
+                font-size: 9px;
+
+                line-height: 1.6;
+            }
+
+            /* =========================
+               MOBILE
+            ========================= */
+
+            @media (max-width: 380px) {
+
                 body {
-                    background: #0a0a0a;
-                    color: #fff;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 20px;
+                    padding: 16px 12px;
                 }
-                .container {
-                    max-width: 600px;
-                    width: 100%;
-                    background: #1a1a1a;
-                    border-radius: 12px;
-                    padding: 40px;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.8);
-                    text-align: center;
+
+                .player-box {
+                    padding: 26px 18px 22px;
+
+                    border-radius: 20px;
                 }
-                h1 { font-size: 32px; margin-bottom: 10px; }
-                .subtitle { color: #888; margin-bottom: 30px; }
-                .url-input {
-                    margin: 20px 0;
+
+                .logo {
+                    width: 68px;
+                    height: 68px;
+
+                    font-size: 34px;
+
+                    border-radius: 20px;
                 }
-                .url-input input {
-                    width: 100%;
-                    padding: 15px;
-                    background: #333;
-                    border: 1px solid #444;
-                    border-radius: 8px;
-                    color: #fff;
-                    font-size: 16px;
+
+                h1 {
+                    font-size: 23px;
                 }
-                .url-input input:focus {
-                    outline: none;
-                    border-color: #4CAF50;
+
+                .account-box {
+                    padding: 19px 15px 17px;
+
+                    border-radius: 18px;
                 }
-                .url-input button {
-                    width: 100%;
-                    padding: 15px;
-                    margin-top: 15px;
-                    background: #4CAF50;
-                    border: none;
-                    border-radius: 8px;
-                    color: #fff;
-                    font-weight: bold;
-                    font-size: 18px;
-                    cursor: pointer;
-                    transition: background 0.3s;
+
+                .account-info {
+                    gap: 6px;
                 }
-                .url-input button:hover {
-                    background: #45a049;
+
+                .info-item {
+                    padding: 10px;
                 }
-                .hint {
-                    color: #666;
-                    font-size: 13px;
-                    margin-top: 15px;
+            }
+
+            @media (min-width: 600px) {
+
+                body {
+                    padding: 40px 20px;
                 }
-                .hint code {
-                    background: #222;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    word-break: break-all;
+
+                .player-box {
+                    padding: 38px 34px 32px;
                 }
-                .endpoints {
-                    margin-top: 30px;
-                    padding: 20px;
-                    background: #222;
-                    border-radius: 8px;
-                    text-align: left;
+
+                .account-box {
+                    padding: 24px 22px 21px;
                 }
-                .endpoints h3 {
-                    color: #888;
-                    font-size: 14px;
-                    margin-bottom: 10px;
-                }
-                .endpoint {
-                    padding: 8px 0;
-                    border-bottom: 1px solid #333;
-                    font-size: 13px;
-                    color: #aaa;
-                }
-                .endpoint:last-child { border-bottom: none; }
-                .endpoint strong { color: #4CAF50; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🎬 Faphouse Player</h1>
-                <div style="text-align:right;margin-bottom:15px;">
-    <a href="/logout"
-       style="
-            background:#d32f2f;
-            color:white;
-            padding:10px 18px;
-            border-radius:8px;
-            text-decoration:none;
-            font-weight:bold;">
-        🚪 Logout License
-    </a>
-</div>
-                <p class="subtitle">Enter any video URL to watch</p>
-                
+            }
+        </style>
+    </head>
+
+    <body>
+
+        <main class="page">
+
+            <!-- =========================
+                 MAIN PLAYER BOX
+            ========================== -->
+
+            <section class="player-box">
+
+                <div class="logo">
+                    🎬
+                </div>
+
+                <h1>
+                    FAPHOUSE PLAYER
+                </h1>
+
+                <p class="subtitle">
+                    Enter any video URL to watch
+                </p>
+
+                <p class="brand">
+                    Powered by <b>LAPAK ANGKER</b>
+                </p>
+
+                <div class="divider"></div>
+
                 <div class="url-input">
+
                     <form method="GET" action="/play">
-                        <input type="text" name="url" placeholder="Paste video URL here..." required>
-                        <button type="submit">▶ Watch Now</button>
+
+                        <div class="form-title">
+                            🔗 Video URL
+                        </div>
+
+                        <div class="url-wrapper">
+
+                            <span class="url-icon">
+                                🌐
+                            </span>
+
+                            <input
+                                type="url"
+                                name="url"
+                                placeholder="Paste video URL here..."
+                                autocomplete="off"
+                                spellcheck="false"
+                                required
+                            >
+
+                        </div>
+
+                        <button
+                            type="submit"
+                            class="watch-button"
+                        >
+                            ▶ WATCH NOW
+                        </button>
+
                     </form>
+
                     <div class="hint">
-                        💡 Example: <code>https://faphouse2.com/videos/shared-bed-stepsister-fuck-C6Qi1u</code>
+
+                        💡 Example:
+
+                        <code>
+                            https://faphouse2.com/videos/shared-bed-stepsister-fuck-C6Qi1u
+                        </code>
+
                     </div>
+
                 </div>
-                
+
                 <div class="endpoints">
-                    <h3>📡 API Endpoints</h3>
-                    <div class="endpoint"><strong>GET</strong> /play?url=VIDEO_URL - Watch video</div>
-                    <div class="endpoint"><strong>GET</strong> /api/m3u8?url=VIDEO_URL - Get M3U8 URL</div>
-                    <div class="endpoint"><strong>GET</strong> /api/status - Check status</div>
+
+                    <div class="endpoints-header">
+
+                        <span class="endpoints-icon">
+                            📡
+                        </span>
+
+                        <h3>
+                            API ENDPOINTS
+                        </h3>
+
+                    </div>
+
+                    <div class="endpoint">
+                        <strong>GET</strong>
+                        /play?url=VIDEO_URL
+                        — Watch video
+                    </div>
+
+                    <div class="endpoint">
+                        <strong>GET</strong>
+                        /api/m3u8?url=VIDEO_URL
+                        — Get M3U8 URL
+                    </div>
+
+                    <div class="endpoint">
+                        <strong>GET</strong>
+                        /api/status
+                        — Check status
+                    </div>
+
                 </div>
-            </div>
-        </body>
-        </html>
+
+            </section>
+
+
+            <!-- =========================
+                 ACCOUNT BOX
+            ========================== -->
+
+            <section class="account-box">
+
+                <div class="account-header">
+
+                    <div class="account-title">
+
+                        <div class="account-icon">
+                            👤
+                        </div>
+
+                        <div>
+                            <div class="account-heading">
+                                ACCOUNT
+                            </div>
+
+                            <div class="account-subheading">
+                                License & Session
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="status">
+                        <span class="status-dot"></span>
+                        ACTIVE
+                    </div>
+
+                </div>
+
+
+                <div class="account-info">
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            🛡 LICENSE
+                        </div>
+
+                        <div class="info-value active">
+                            ACTIVE
+                        </div>
+
+                    </div>
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            📦 VERSION
+                        </div>
+
+                        <div class="info-value">
+                            1.0.0
+                        </div>
+
+                    </div>
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            🔐 SESSION
+                        </div>
+
+                        <div class="info-value active">
+                            SECURED
+                        </div>
+
+                    </div>
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            ⚡ STATUS
+                        </div>
+
+                        <div class="info-value active">
+                            ONLINE
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <a
+                    href="/logout"
+                    class="logout-button"
+                >
+                    🚪 LOGOUT LICENSE
+                </a>
+
+
+                <div class="account-footer">
+                    License session is protected<br>
+                    © 2026 LAPAK ANGKER · All Rights Reserved
+                </div>
+
+            </section>
+
+        </main>
+
+    </body>
+    </html>
     """)
 
 @app.route('/play')
