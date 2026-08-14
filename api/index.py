@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template_string, session, redirect
+from flask import Flask, jsonify, request, render_template, render_template_string, session, redirect
 from supabase import create_client
 import requests
 import re
