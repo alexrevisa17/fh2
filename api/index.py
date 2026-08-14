@@ -42,7 +42,7 @@ def check_license(key):
         license_data = result.data
 
         # Status harus ACTIVE
-        if license_data["status"] != "ACTIVE":
+        if license_data["status"] != "active":
             return False
 
         return True
