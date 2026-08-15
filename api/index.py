@@ -703,6 +703,14 @@ class FaphouseClient:
 
 client = FaphouseClient()
 
+@app.route('/api/test-route')
+def test_route():
+    return jsonify({
+        "success": True,
+        "message": "TEST ROUTE AKTIF",
+        "version": "DEBUG-001"
+    })
+
 @app.route("/admin/generate-license", methods=["POST"])
 def admin_generate_license():
 
