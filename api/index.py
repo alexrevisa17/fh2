@@ -799,10 +799,44 @@ def admin_reset_device():
 def license_page():
 
     key = session.get("license_key")
+    device_id = session.get("device_id")
 
-    # Jika lisensi di session masih valid, langsung masuk
-    if key and check_license(key):
-        return redirect("/")
+    # Jika session masih lengkap,
+    # pastikan lisensi DAN device masih valid
+    if key and device_id and check_license(key):
+
+        try:
+
+            license_result = (
+                supabase
+                .table("licenses")
+                .select("id")
+                .eq("license_key", key)
+                .single()
+                .execute()
+            )
+
+            if license_result.data:
+
+                license_id = license_result.data["id"]
+
+                device_result = (
+                    supabase
+                    .table("license_devices")
+                    .select("id")
+                    .eq("license_id", license_id)
+                    .eq("device_id", device_id)
+                    .execute()
+                )
+
+                if device_result.data:
+                    return redirect("/")
+
+        except Exception as e:
+            logger.error(f"License Session Check Error: {e}")
+
+        # Device sudah tidak valid
+        session.clear()
 
     if request.method == 'POST':
 
@@ -820,6 +854,7 @@ def license_page():
 
             session["licensed"] = True
             session["license_key"] = key
+            session["device_id"] = device_id
 
             return redirect("/")
 
@@ -832,6 +867,7 @@ def license_page():
         "license.html",
         error=False
     )
+
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
@@ -2027,8 +2063,11 @@ def status():
     
 @app.route("/logout")
 def logout():
+
     session.pop("licensed", None)
     session.pop("license_key", None)
+    session.pop("device_id", None)
+
     return redirect("/license")
     
 def handler(request, context):
