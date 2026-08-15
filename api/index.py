@@ -368,8 +368,8 @@ logger = logging.getLogger(__name__)
 
 #Add a Faphouse Premium Account
 BASE_URL = "https://faphouse2.com"
-EMAIL = os.environ.get('EMAIL', 'faphouse@vcc.biz.id') #Email
-PASSWORD = os.environ.get('PASSWORD', 'Bangpray#123') #Pass
+EMAIL = os.environ.get("EMAIL") #Email
+PASSWORD = os.environ.get("PASSWORD") #Pass
 
 CACHE_DURATION = 300
 
