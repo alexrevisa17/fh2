@@ -2448,6 +2448,146 @@ def api_debug():
             "error": str(e)
         }), 500
 
+@app.route('/api/debug2')
+def api_debug2():
+
+    video_url = request.args.get('url', '').strip()
+
+    if not video_url:
+        return jsonify({
+            "success": False,
+            "error": "Missing 'url' parameter"
+        }), 400
+
+    clean_url = video_url.split('#')[0]
+
+    try:
+        debug_session = requests.Session()
+
+        debug_session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9"
+        })
+
+        response = debug_session.get(
+            clean_url,
+            timeout=15,
+            allow_redirects=True
+        )
+
+        html = response.text or ""
+        html_lower = html.lower()
+
+        def find_all_contexts(keyword, radius=1500, limit=10):
+            results = []
+            start_from = 0
+            keyword_lower = keyword.lower()
+
+            while len(results) < limit:
+
+                pos = html_lower.find(
+                    keyword_lower,
+                    start_from
+                )
+
+                if pos == -1:
+                    break
+
+                start = max(0, pos - radius)
+                end = min(
+                    len(html),
+                    pos + len(keyword) + radius
+                )
+
+                results.append({
+                    "position": pos,
+                    "context": html[start:end]
+                })
+
+                start_from = pos + len(keyword)
+
+            return results
+
+        keywords = [
+            "video-pr.xhcdn.com",
+            "data-sources",
+            "data-video",
+            "video_url",
+            "videoUrl",
+            "video_data",
+            "videoData",
+            "player",
+            "media=",
+            "format/",
+            ".m3u8",
+            "m3u8",
+            "hls"
+        ]
+
+        contexts = {}
+
+        for keyword in keywords:
+            contexts[keyword] = find_all_contexts(
+                keyword,
+                radius=1200,
+                limit=5
+            )
+
+        return jsonify({
+            "success": True,
+
+            "debug_version": "DEBUG-2026-08-15-B",
+
+            "request": {
+                "original_url": video_url,
+                "clean_url": clean_url
+            },
+
+            "response": {
+                "status_code": response.status_code,
+                "final_url": response.url,
+                "content_type": response.headers.get(
+                    "Content-Type"
+                ),
+                "content_encoding": response.headers.get(
+                    "Content-Encoding"
+                ),
+                "content_length": len(response.content)
+            },
+
+            "cookies": [
+                cookie.name
+                for cookie in debug_session.cookies
+            ],
+
+            "keyword_counts": {
+                keyword: html_lower.count(
+                    keyword.lower()
+                )
+                for keyword in keywords
+            },
+
+            "contexts": contexts
+
+        })
+
+    except Exception as e:
+
+        logger.exception("Debug2 request failed")
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/api/debug-video')
 def api_debug_video():
 
