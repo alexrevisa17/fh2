@@ -740,6 +740,55 @@ def admin_delete_license():
             "message": str(e)
         }), 500
 
+@app.route("/admin/reset-device", methods=["POST"])
+def admin_reset_device():
+
+    if not session.get("admin_logged_in"):
+        return jsonify({
+            "success": False,
+            "message": "Unauthorized"
+        }), 401
+
+    try:
+
+        data = request.get_json(silent=True) or {}
+
+        device_id = data.get("device_id")
+
+        if not device_id:
+            return jsonify({
+                "success": False,
+                "message": "Device ID tidak ditemukan"
+            }), 400
+
+        result = (
+            supabase
+            .table("license_devices")
+            .delete()
+            .eq("id", device_id)
+            .execute()
+        )
+
+        if not result.data:
+            return jsonify({
+                "success": False,
+                "message": "Device tidak ditemukan"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "message": "Device berhasil direset"
+        })
+
+    except Exception as e:
+
+        logger.error(f"Reset Device Error: {e}")
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
 @app.route('/license', methods=['GET', 'POST'])
 def license_page():
 
