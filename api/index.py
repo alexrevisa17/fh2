@@ -599,6 +599,40 @@ def admin_list_license():
             "message": str(e)
         }), 500
 
+@app.route("/admin/license-devices/<license_id>")
+def admin_license_devices(license_id):
+
+    if not session.get("admin_logged_in"):
+        return jsonify({
+            "success": False,
+            "message": "Unauthorized"
+        }), 401
+
+    try:
+
+        result = (
+            supabase
+            .table("license_devices")
+            .select("*")
+            .eq("license_id", license_id)
+            .order("first_seen", desc=False)
+            .execute()
+        )
+
+        return jsonify({
+            "success": True,
+            "devices": result.data or []
+        })
+
+    except Exception as e:
+
+        logger.error(f"Device List Error: {e}")
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+        
 @app.route("/admin/update-license", methods=["POST"])
 def admin_update_license():
 
