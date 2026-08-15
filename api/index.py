@@ -879,7 +879,9 @@ def admin_reset_device():
             .execute()
         )
 
-        if not existing.data:
+
+        # Aman jika hasil query None
+        if not existing or not existing.data:
 
             logger.warning(
                 f"Device tidak ditemukan: {device_id}"
@@ -926,8 +928,12 @@ def admin_reset_device():
         )
 
 
-        # Kalau masih ada → DELETE gagal
-        if verify.data:
+        # Jika device masih ada → DELETE gagal
+        #
+        # Penting:
+        # verify bisa None jika data sudah tidak ditemukan.
+        # Itu justru berarti DELETE berhasil.
+        if verify and verify.data:
 
             logger.error(
                 f"RESET GAGAL - Device masih ada: "
@@ -939,6 +945,10 @@ def admin_reset_device():
                 "message": "Device gagal dihapus dari database"
             }), 500
 
+
+        # =========================
+        # RESET BERHASIL
+        # =========================
 
         logger.info(
             f"DEVICE RESET BERHASIL: {device_id}"
