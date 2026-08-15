@@ -211,8 +211,8 @@ def register_device(license_key, device_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        logger.error(f"Register Device Error: {e}")
-        return False
+        logger.error(e)
+        raise
 
 def generate_license_key():
     chars = string.ascii_uppercase + string.digits
@@ -1921,8 +1921,9 @@ def status():
 @app.route("/logout")
 def logout():
     session.pop("licensed", None)
+    session.pop("license_key", None)
     return redirect("/license")
-
+    
 def handler(request, context):
     return app(request.environ, context)
 
