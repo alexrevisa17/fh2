@@ -1248,7 +1248,6 @@ async function resetDevice(deviceId, licenseId){
         "slot device akan tersedia kembali."
     );
 
-
     if(!confirmed){
         return;
     }
@@ -1259,7 +1258,6 @@ async function resetDevice(deviceId, licenseId){
         const response = await fetch(
             "/admin/reset-device",
             {
-
                 method: "POST",
 
                 headers: {
@@ -1267,11 +1265,8 @@ async function resetDevice(deviceId, licenseId){
                 },
 
                 body: JSON.stringify({
-
                     device_id: deviceId
-
                 })
-
             }
         );
 
@@ -1286,37 +1281,11 @@ async function resetDevice(deviceId, licenseId){
             );
 
 
-            // Refresh daftar device
-            const button =
-                document.querySelector(
-                    `[onclick="loadDevices('${licenseId}', this)"]`
-                );
+            // Ambil ulang data license
+            // agar daftar device benar-benar
+            // berasal dari database terbaru.
+            await loadLicenses();
 
-
-            if(button){
-
-                // Paksa tutup lalu buka kembali
-                const container =
-                    document.getElementById(
-                        "devices-" + licenseId
-                    );
-
-                if(container){
-
-                    container.style.display = "none";
-
-                }
-
-                button.innerText =
-                    "📱 Lihat Device";
-
-
-                loadDevices(
-                    licenseId,
-                    button
-                );
-
-            }
 
         }else{
 
@@ -1326,6 +1295,7 @@ async function resetDevice(deviceId, licenseId){
             );
 
         }
+
 
     }catch(error){
 
