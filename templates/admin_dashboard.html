@@ -410,6 +410,65 @@ button{
     text-align:center;
 
 }
+            .device-box {
+    margin-top: 12px;
+    padding: 14px;
+    border-radius: 12px;
+    background: #08090d;
+    border: 1px solid #2d333d;
+}
+
+.device-title {
+    color: #45e58a;
+    font-size: 12px;
+    font-weight: 800;
+    margin-bottom: 10px;
+}
+
+.device-item {
+    padding: 12px;
+    border-radius: 10px;
+    background: #101217;
+    border: 1px solid #252a33;
+    margin-top: 8px;
+}
+
+.device-platform {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+}
+
+.device-info {
+    margin-top: 7px;
+    font-size: 10px;
+    line-height: 1.7;
+    color: #777e8b;
+    word-break: break-all;
+}
+
+.device-id {
+    color: #45e58a;
+}
+
+.reset-device-btn {
+    width: 100%;
+    height: 42px;
+    margin-top: 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,80,80,0.25);
+    background: #7f1d1d;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.loading-device {
+    margin-top: 10px;
+    color: #686e7a;
+    font-size: 11px;
+    text-align: center;
+}
 
         </style>
 
@@ -793,6 +852,24 @@ async function loadLicenses(){
         }
     </button>
 
+    <button
+        type="button"
+        onclick="loadDevices('${item.id}', this)"
+        style="
+            margin-top:8px;
+            background:#164e63;
+            color:#fff;
+        "
+    >
+        📱 Lihat Device
+    </button>
+
+
+    <div
+        id="devices-${item.id}"
+        style="display:none;"
+    ></div>
+
         <button
         type="button"
         onclick="deleteLicense('${item.id}')"
@@ -947,6 +1024,316 @@ async function deleteLicense(id){
 
         alert(
             "Terjadi kesalahan saat menghubungi server"
+        );
+
+    }
+
+}
+
+async function loadDevices(licenseId, button){
+
+    const container =
+        document.getElementById(
+            "devices-" + licenseId
+        );
+
+    if(!container){
+        return;
+    }
+
+
+    // Jika sedang terbuka → tutup
+    if(container.style.display === "block"){
+
+        container.style.display = "none";
+
+        button.innerText = "📱 Lihat Device";
+
+        return;
+    }
+
+
+    container.style.display = "block";
+
+    container.innerHTML = `
+        <div class="device-box">
+            <div class="loading-device">
+                ⏳ Memuat device...
+            </div>
+        </div>
+    `;
+
+
+    try{
+
+        const response = await fetch(
+            "/admin/license-devices/" + licenseId
+        );
+
+
+        const data = await response.json();
+
+
+        if(!data.success){
+
+            container.innerHTML = `
+                <div class="device-box">
+                    <div style="
+                        color:#ff7777;
+                        font-size:11px;
+                        text-align:center;
+                    ">
+                        ❌ Gagal mengambil data device
+                    </div>
+                </div>
+            `;
+
+            return;
+        }
+
+
+        const devices = data.devices || [];
+
+
+        if(devices.length === 0){
+
+            container.innerHTML = `
+                <div class="device-box">
+
+                    <div class="device-title">
+                        📱 DEVICE TERDAFTAR
+                    </div>
+
+                    <div style="
+                        color:#686e7a;
+                        font-size:11px;
+                        text-align:center;
+                        padding:10px 0;
+                    ">
+                        Tidak ada device terdaftar.
+                    </div>
+
+                </div>
+            `;
+
+            button.innerText = "📱 Sembunyikan Device";
+
+            return;
+        }
+
+
+        let html = `
+
+            <div class="device-box">
+
+                <div class="device-title">
+                    📱 DEVICE TERDAFTAR
+                </div>
+
+        `;
+
+
+        devices.forEach(device => {
+
+            const firstSeen =
+                device.first_seen
+                    ? new Date(
+                        device.first_seen
+                    ).toLocaleString("id-ID")
+                    : "-";
+
+
+            const lastSeen =
+                device.last_seen
+                    ? new Date(
+                        device.last_seen
+                    ).toLocaleString("id-ID")
+                    : "-";
+
+
+            html += `
+
+                <div class="device-item">
+
+                    <div class="device-platform">
+                        💻 ${device.platform || "Unknown"}
+                    </div>
+
+
+                    <div class="device-info">
+
+                        <div>
+                            🆔 Device ID:
+                        </div>
+
+                        <div class="device-id">
+                            ${device.device_id}
+                        </div>
+
+
+                        <div style="margin-top:6px;">
+                            🕐 First Seen:
+                            ${firstSeen}
+                        </div>
+
+
+                        <div>
+                            🟢 Last Seen:
+                            ${lastSeen}
+                        </div>
+
+                    </div>
+
+
+                    <button
+                        type="button"
+                        class="reset-device-btn"
+                        onclick="resetDevice(
+                            '${device.id}',
+                            '${licenseId}'
+                        )"
+                    >
+                        🔓 RESET DEVICE
+                    </button>
+
+                </div>
+
+            `;
+
+        });
+
+
+        html += `
+
+            </div>
+
+        `;
+
+
+        container.innerHTML = html;
+
+        button.innerText =
+            "📱 Sembunyikan Device";
+
+
+    }catch(error){
+
+        console.error(error);
+
+
+        container.innerHTML = `
+            <div class="device-box">
+
+                <div style="
+                    color:#ff7777;
+                    font-size:11px;
+                    text-align:center;
+                ">
+                    ❌ Terjadi kesalahan saat
+                    menghubungi server.
+                </div>
+
+            </div>
+        `;
+
+    }
+
+}
+
+async function resetDevice(deviceId, licenseId){
+
+    const confirmed = confirm(
+        "Yakin ingin mereset device ini?\n\n" +
+        "Device akan dihapus dari license dan " +
+        "slot device akan tersedia kembali."
+    );
+
+
+    if(!confirmed){
+        return;
+    }
+
+
+    try{
+
+        const response = await fetch(
+            "/admin/reset-device",
+            {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+
+                    device_id: deviceId
+
+                })
+
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if(data.success){
+
+            alert(
+                "✅ Device berhasil direset."
+            );
+
+
+            // Refresh daftar device
+            const button =
+                document.querySelector(
+                    `[onclick="loadDevices('${licenseId}', this)"]`
+                );
+
+
+            if(button){
+
+                // Paksa tutup lalu buka kembali
+                const container =
+                    document.getElementById(
+                        "devices-" + licenseId
+                    );
+
+                if(container){
+
+                    container.style.display = "none";
+
+                }
+
+                button.innerText =
+                    "📱 Lihat Device";
+
+
+                loadDevices(
+                    licenseId,
+                    button
+                );
+
+            }
+
+        }else{
+
+            alert(
+                data.message ||
+                "❌ Gagal mereset device."
+            );
+
+        }
+
+    }catch(error){
+
+        console.error(error);
+
+        alert(
+            "❌ Terjadi kesalahan saat " +
+            "menghubungi server."
         );
 
     }
