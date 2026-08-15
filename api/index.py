@@ -2381,6 +2381,20 @@ def api_debug():
 
         html_lower = html.lower()
 
+        def find_context(keyword, radius=2000):
+            pos = html_lower.find(keyword.lower())
+
+            if pos == -1:
+                return None
+
+            start = max(0, pos - radius)
+            end = min(len(html), pos + radius)
+
+            return {
+                "position": pos,
+                "context": html[start:end]
+            }
+
         return jsonify({
             "success": True,
             "debug_version": "DEBUG-2026-08-15-A",
@@ -2414,6 +2428,12 @@ def api_debug():
                 "contains_hls": "hls" in html_lower,
                 "contains_video": "<video" in html_lower,
                 "contains_script": "<script" in html_lower
+            },
+
+            "keyword_context": {
+                "video_pr": find_context("video-pr"),
+                "hls": find_context("hls"),
+                "sources": find_context("sources")
             },
 
             "html_preview": html[:3000]
