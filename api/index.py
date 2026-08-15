@@ -200,7 +200,7 @@ def check_license(key):
                 .execute()
             )
 
-            if not device_result.data:
+            if not device_result or not device_result.data:
 
                 logger.warning(
                     f"Device sudah tidak terdaftar: "
@@ -209,6 +209,27 @@ def check_license(key):
 
                 return False
 
+
+            # =========================
+            # UPDATE LAST SEEN
+            # =========================
+
+            try:
+
+                supabase \
+                    .table("license_devices") \
+                    .update({
+                        "last_seen": datetime.now(
+                            timezone.utc
+                        ).isoformat()
+                    }) \
+                    .eq("id", device_result.data["id"]) \
+                    .execute()
+
+            except Exception as e:
+                logger.warning(
+                    f"Gagal update last_seen: {e}"
+                )
 
         return True
 
