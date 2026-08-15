@@ -30,7 +30,7 @@ supabase = create_client(
     SUPABASE_KEY
 )
 
-@app@app.before_request
+@app.before_request
 def verify_license():
 
     # Semua route admin tidak perlu lisensi user
