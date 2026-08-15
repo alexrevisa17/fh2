@@ -517,17 +517,12 @@
 
 
             {% if error %}
-
             <div class="error">
-
                 <span>❌</span>
-
                 <span>
-                    License key yang kamu masukkan tidak valid.
+                    {{ message if message else "License key yang kamu masukkan tidak valid." }}
                 </span>
-
             </div>
-
             {% endif %}
 
 
