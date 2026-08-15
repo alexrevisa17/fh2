@@ -190,8 +190,30 @@ def register_device(license_key, device_id):
         if used_devices >= license_data["max_devices"]:
             return False
 
+        # Deteksi platform
+        ua = (request.user_agent.string or "").lower()
+        if "android" in ua:
+            platform = "Android"
+
+        elif "iphone" in ua or "ipad" in ua or "ios" in ua:
+            platform = "iOS"
+
+        elif "windows" in ua:
+            platform = "Windows"
+
+        elif "macintosh" in ua or "mac os" in ua:
+            platform = "macOS"
+
+        elif "linux" in ua:
+            platform = "Linux"
+
+        else:
+            platform = "Unknown"
+
+
         # Daftarkan device baru
         print("INSERTING DEVICE...")
+
         (
             supabase
             .table("license_devices")
@@ -199,7 +221,7 @@ def register_device(license_key, device_id):
                 "license_id": license_id,
                 "device_id": device_id,
                 "device_name": request.user_agent.string[:120],
-                "platform": request.user_agent.platform,
+                "platform": platform,
                 "first_seen": now,
                 "last_seen": now
             })
