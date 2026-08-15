@@ -30,23 +30,19 @@ supabase = create_client(
     SUPABASE_KEY
 )
 
-@app.before_request
+@app@app.before_request
 def verify_license():
 
-    # Halaman yang boleh diakses tanpa lisensi
-    allowed = [
-        "license_page",
-        "admin_login",
-        "admin_dashboard",
-        "admin_generate_license",
-        "admin_list_license",
-        "admin_update_license",
-        "admin_delete_license",
-        "admin_logout",
-        "static"
-    ]
+    # Semua route admin tidak perlu lisensi user
+    if request.endpoint and request.endpoint.startswith("admin_"):
+        return
 
-    if request.endpoint in allowed:
+    # File static
+    if request.endpoint == "static":
+        return
+
+    # Halaman aktivasi lisensi
+    if request.endpoint == "license_page":
         return
 
     key = session.get("license_key")
