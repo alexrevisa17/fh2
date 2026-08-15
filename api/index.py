@@ -102,6 +102,11 @@ def verify_license():
 
 def check_license(key):
     try:
+
+        # =========================
+        # AMBIL LICENSE
+        # =========================
+
         result = (
             supabase
             .table("licenses")
@@ -116,11 +121,19 @@ def check_license(key):
 
         license_data = result.data
 
-        # Status harus active
+
+        # =========================
+        # CEK STATUS
+        # =========================
+
         if license_data["status"].lower() != "active":
             return False
 
-        # Aktivasi pertama
+
+        # =========================
+        # AKTIVASI PERTAMA
+        # =========================
+
         if license_data["activated_at"] is None:
 
             activated = datetime.now(timezone.utc)
@@ -140,10 +153,13 @@ def check_license(key):
                 .execute()
             )
 
-            # Update data lokal
             license_data["expires_at"] = expires.isoformat()
 
-        # Cek apakah lisensi sudah expired
+
+        # =========================
+        # CEK EXPIRED
+        # =========================
+
         expires_at = datetime.fromisoformat(
             license_data["expires_at"].replace("Z", "+00:00")
         )
@@ -162,10 +178,47 @@ def check_license(key):
 
             return False
 
+
+        # =========================
+        # CEK DEVICE SESSION
+        # =========================
+
+        session_device_id = session.get("device_id")
+
+        # Kalau session belum mempunyai device_id,
+        # jangan langsung dianggap valid untuk request
+        # yang sudah login.
+        if session_device_id:
+
+            device_result = (
+                supabase
+                .table("license_devices")
+                .select("id, device_id")
+                .eq("license_id", license_data["id"])
+                .eq("device_id", session_device_id)
+                .maybe_single()
+                .execute()
+            )
+
+            if not device_result.data:
+
+                logger.warning(
+                    f"Device sudah tidak terdaftar: "
+                    f"{session_device_id}"
+                )
+
+                return False
+
+
         return True
 
+
     except Exception as e:
-        logger.error(f"License Error: {e}")
+
+        logger.error(
+            f"License Error: {e}"
+        )
+
         return False
 
 def register_device(license_key, device_id):
@@ -799,7 +852,7 @@ def admin_reset_device():
 
         data = request.get_json(silent=True) or {}
 
-        device_id = data.get("device_id", "").strip()
+        device_id = data.get("device_id")
 
         if not device_id:
             return jsonify({
@@ -807,34 +860,103 @@ def admin_reset_device():
                 "message": "Device ID tidak ditemukan"
             }), 400
 
-        print("RESET DEVICE REQUEST")
-        print("Device ID:", device_id)
 
-        # Hapus berdasarkan kolom device_id
-        result = (
+        logger.info(
+            f"ADMIN RESET DEVICE: {device_id}"
+        )
+
+
+        # =========================
+        # CEK DEVICE TERLEBIH DAHULU
+        # =========================
+
+        existing = (
             supabase
             .table("license_devices")
-            .delete()
-            .eq("device_id", device_id)
+            .select("*")
+            .eq("id", device_id)
+            .maybe_single()
             .execute()
         )
 
-        if not result.data:
+        if not existing.data:
+
+            logger.warning(
+                f"Device tidak ditemukan: {device_id}"
+            )
+
             return jsonify({
                 "success": False,
                 "message": "Device tidak ditemukan"
             }), 404
 
-        print("DEVICE RESET SUCCESS")
+
+        device_data = existing.data
+
+        logger.info(
+            f"Device ditemukan: "
+            f"{device_data.get('device_id')}"
+        )
+
+
+        # =========================
+        # DELETE DEVICE
+        # =========================
+
+        delete_result = (
+            supabase
+            .table("license_devices")
+            .delete()
+            .eq("id", device_id)
+            .execute()
+        )
+
+
+        # =========================
+        # VERIFIKASI DELETE
+        # =========================
+
+        verify = (
+            supabase
+            .table("license_devices")
+            .select("id")
+            .eq("id", device_id)
+            .maybe_single()
+            .execute()
+        )
+
+
+        # Kalau masih ada → DELETE gagal
+        if verify.data:
+
+            logger.error(
+                f"RESET GAGAL - Device masih ada: "
+                f"{device_id}"
+            )
+
+            return jsonify({
+                "success": False,
+                "message": "Device gagal dihapus dari database"
+            }), 500
+
+
+        logger.info(
+            f"DEVICE RESET BERHASIL: {device_id}"
+        )
+
 
         return jsonify({
             "success": True,
-            "message": "Device berhasil direset"
+            "message": "Device berhasil direset",
+            "device_id": device_id
         })
+
 
     except Exception as e:
 
-        logger.error(f"Reset Device Error: {e}")
+        logger.exception(
+            "Reset Device Error"
+        )
 
         return jsonify({
             "success": False,
