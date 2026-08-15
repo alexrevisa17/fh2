@@ -2448,6 +2448,106 @@ def api_debug():
             "error": str(e)
         }), 500
 
+@app.route('/api/debug-video')
+def api_debug_video():
+
+    video_url = request.args.get('url', '').strip()
+
+    if not video_url:
+        return jsonify({
+            "success": False,
+            "error": "Missing 'url' parameter"
+        }), 400
+
+    clean_url = video_url.split('#')[0]
+
+    try:
+        debug_session = requests.Session()
+
+        debug_session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9"
+        })
+
+        response = debug_session.get(
+            clean_url,
+            timeout=20,
+            allow_redirects=True
+        )
+
+        html = response.text or ""
+
+        # Cari semua URL video-pr yang muncul di HTML
+        video_pr_urls = re.findall(
+            r'https?://video-pr\.xhcdn\.com[^"\'<>\s]+',
+            html,
+            re.IGNORECASE
+        )
+
+        # Cari potongan HTML yang mengandung player/video
+        contexts = []
+
+        keywords = [
+            'video-pr.xhcdn.com',
+            'data-sources',
+            'sources:',
+            '"sources"',
+            "'sources'",
+            'hls',
+            'player',
+            'media',
+            'video_url',
+            'videoUrl'
+        ]
+
+        html_lower = html.lower()
+
+        for keyword in keywords:
+            pos = html_lower.find(keyword.lower())
+
+            if pos != -1:
+                start = max(0, pos - 1500)
+                end = min(len(html), pos + 3000)
+
+                contexts.append({
+                    "keyword": keyword,
+                    "position": pos,
+                    "context": html[start:end]
+                })
+
+        return jsonify({
+            "success": True,
+
+            "response": {
+                "status_code": response.status_code,
+                "final_url": response.url,
+                "content_length": len(response.content)
+            },
+
+            "video_pr_urls": list(dict.fromkeys(video_pr_urls)),
+
+            "video_pr_count": len(video_pr_urls),
+
+            "contexts": contexts[:20]
+        })
+
+    except Exception as e:
+
+        logger.exception("Debug video request failed")
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/api/status')
 def status():
     return jsonify({
