@@ -3623,20 +3623,31 @@ def get_m3u8():
             )
         )
 
-        if stream_url:
-
+        if stream_url and (
+            ".m3u8" in stream_url.lower()
+            or stream_url.lower().endswith(".m3u8")
+        ):
             return jsonify({
-
-                "success":
-                    True,
-
-                "m3u8_url":
-                    stream_url,
-
-                "video_url":
-                    video_url
+                "success": True,
+                "m3u8_url": stream_url,
+                "video_url": video_url
             })
 
+        if stream_url and (
+            ".m3u8" in stream_url.lower()
+            or stream_url.lower().endswith(".m3u8")
+        ):
+            return jsonify({
+                "success": True,
+                "m3u8_url": stream_url,
+                "video_url": video_url
+            })
+
+        return jsonify({
+            "success": False,
+            "error": "Resolved URL is not a valid HLS playlist"
+        }), 422
+        
         return jsonify({
 
             "success":
