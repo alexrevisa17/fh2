@@ -753,7 +753,7 @@ def admin_reset_device():
 
         data = request.get_json(silent=True) or {}
 
-        device_id = data.get("device_id")
+        device_id = data.get("device_id", "").strip()
 
         if not device_id:
             return jsonify({
@@ -761,11 +761,15 @@ def admin_reset_device():
                 "message": "Device ID tidak ditemukan"
             }), 400
 
+        print("RESET DEVICE REQUEST")
+        print("Device ID:", device_id)
+
+        # Hapus berdasarkan kolom device_id
         result = (
             supabase
             .table("license_devices")
             .delete()
-            .eq("id", device_id)
+            .eq("device_id", device_id)
             .execute()
         )
 
@@ -774,6 +778,8 @@ def admin_reset_device():
                 "success": False,
                 "message": "Device tidak ditemukan"
             }), 404
+
+        print("DEVICE RESET SUCCESS")
 
         return jsonify({
             "success": True,
