@@ -41,16 +41,62 @@ def verify_license():
     if request.endpoint == "static":
         return
 
-    # Halaman aktivasi lisensi
+    # Halaman lisensi
     if request.endpoint == "license_page":
         return
 
-    key = session.get("license_key")
+    # Ambil session
+    license_key = session.get("license_key")
+    device_id = session.get("device_id")
 
-    if not key:
+    # Tidak ada session lisensi
+    if not license_key or not device_id:
+        session.clear()
         return redirect("/license")
 
-    if not check_license(key):
+    # Cek lisensi masih aktif dan belum expired
+    if not check_license(license_key):
+        session.clear()
+        return redirect("/license")
+
+    # Pastikan device yang sedang menggunakan session
+    # masih terdaftar pada lisensi tersebut
+    try:
+
+        license_result = (
+            supabase
+            .table("licenses")
+            .select("id")
+            .eq("license_key", license_key)
+            .single()
+            .execute()
+        )
+
+        if not license_result.data:
+            session.clear()
+            return redirect("/license")
+
+        license_id = license_result.data["id"]
+
+        device_result = (
+            supabase
+            .table("license_devices")
+            .select("id")
+            .eq("license_id", license_id)
+            .eq("device_id", device_id)
+            .limit(1)
+            .execute()
+        )
+
+        # Device sudah dihapus oleh admin
+        if not device_result.data:
+            session.clear()
+            return redirect("/license")
+
+    except Exception as e:
+
+        logger.error(f"Device verification error: {e}")
+
         session.clear()
         return redirect("/license")
 
@@ -2063,11 +2109,7 @@ def status():
     
 @app.route("/logout")
 def logout():
-
-    session.pop("licensed", None)
-    session.pop("license_key", None)
-    session.pop("device_id", None)
-
+    session.clear()
     return redirect("/license")
     
 def handler(request, context):
