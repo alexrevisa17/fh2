@@ -2332,6 +2332,93 @@ def get_m3u8():
         logger.error(f"❌ API error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/debug')
+def api_debug():
+
+    video_url = request.args.get('url', '').strip()
+
+    if not video_url:
+        return jsonify({
+            "success": False,
+            "error": "Missing 'url' parameter"
+        }), 400
+
+    # Untuk debugging, fragment (#...) tidak dikirim
+    # sebagai bagian dari HTTP request oleh browser.
+    clean_url = video_url.split('#')[0]
+
+    try:
+        debug_session = requests.Session()
+
+        debug_session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9"
+        })
+
+        response = debug_session.get(
+            clean_url,
+            timeout=15,
+            allow_redirects=True
+        )
+
+        html = response.text or ""
+
+        html_lower = html.lower()
+
+        return jsonify({
+            "success": True,
+
+            "request": {
+                "original_url": video_url,
+                "clean_url": clean_url
+            },
+
+            "response": {
+                "status_code": response.status_code,
+                "final_url": response.url,
+                "content_type": response.headers.get(
+                    "Content-Type"
+                ),
+                "content_encoding": response.headers.get(
+                    "Content-Encoding"
+                ),
+                "content_length": len(response.content)
+            },
+
+            "cookies": [
+                cookie.name
+                for cookie in debug_session.cookies
+            ],
+
+            "indicators": {
+                "contains_m3u8": ".m3u8" in html_lower,
+                "contains_video_pr": "video-pr" in html_lower,
+                "contains_sources": "sources" in html_lower,
+                "contains_hls": "hls" in html_lower,
+                "contains_video": "<video" in html_lower,
+                "contains_script": "<script" in html_lower
+            },
+
+            "html_preview": html[:3000]
+        })
+
+    except Exception as e:
+
+        logger.exception("Debug request failed")
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route('/api/status')
 def status():
     return jsonify({
