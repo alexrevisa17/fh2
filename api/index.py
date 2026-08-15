@@ -521,15 +521,71 @@ class FaphouseClient:
                     'Upgrade-Insecure-Requests': '1'
                 }
                 
-                response = session.get(video_url, timeout=15, headers=headers)
-                logger.info(f"📡 Session GET Status: {response.status_code}")
-                
+                response = session.get(
+                    video_url,
+                    timeout=15,
+                    headers=headers
+                )
+
+                logger.info(
+                    f"📡 Session GET Status: {response.status_code}"
+                )
+
+                logger.info(
+                    f"📡 Session Final URL: {response.url}"
+                )
+
+                logger.info(
+                    f"📡 Session Content-Type: "
+                    f"{response.headers.get('Content-Type')}"
+                )
+
+                logger.info(
+                    f"📡 Session Content-Length: "
+                    f"{len(response.content)}"
+                )
+
                 if response.status_code == 200:
+
                     html = self._decode_response(response)
+
                     if html:
+
+                        logger.info(
+                            f"📄 HTML length: {len(html)}"
+                        )
+
+                        logger.info(
+                            f"📄 Contains m3u8: "
+                            f"{'.m3u8' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 Contains login: "
+                            f"{'login' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 Contains signin: "
+                            f"{'signin' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 Contains video: "
+                            f"{'video' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 HTML preview: "
+                            f"{html[:1000]}"
+                        )
+
                         m3u8 = self._extract_m3u8(html)
+
                         if m3u8:
-                            logger.info("✅ Found M3U8 URL with session!")
+                            logger.info(
+                                "✅ Found M3U8 URL with session!"
+                            )
                             return m3u8
             except Exception as e:
                 logger.warning(f"⚠️ Session attempt failed: {str(e)}")
