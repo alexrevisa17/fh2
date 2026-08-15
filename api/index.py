@@ -129,6 +129,10 @@ def check_license(key):
 def register_device(license_key, device_id):
     try:
 
+        print("REGISTER DEVICE")
+        print("License:", license_key)
+        print("Device:", device_id)
+
         # Ambil data lisensi
         result = (
             supabase
@@ -187,6 +191,7 @@ def register_device(license_key, device_id):
             return False
 
         # Daftarkan device baru
+        print("INSERTING DEVICE...")
         (
             supabase
             .table("license_devices")
@@ -204,6 +209,8 @@ def register_device(license_key, device_id):
         return True
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(f"Register Device Error: {e}")
         return False
 
@@ -686,30 +693,28 @@ def license_page():
 
     key = session.get("license_key")
 
+    # Jika lisensi di session masih valid, langsung masuk
     if key and check_license(key):
         return redirect("/")
 
     if request.method == 'POST':
 
         key = request.form.get("license", "").strip()
-        device_id = request.form.get(
-    "device_id",
-    ""
-).strip()
+        device_id = request.form.get("device_id", "").strip()
 
         if check_license(key):
 
-    if not register_device(key, device_id):
-        return render_template(
-            "license.html",
-            error=True,
-            message="Batas maksimum perangkat telah tercapai."
-        )
+            if not register_device(key, device_id):
+                return render_template(
+                    "license.html",
+                    error=True,
+                    message="Batas maksimum perangkat telah tercapai."
+                )
 
-    session["licensed"] = True
-    session["license_key"] = key
+            session["licensed"] = True
+            session["license_key"] = key
 
-    return redirect("/")
+            return redirect("/")
 
         return render_template(
             "license.html",
