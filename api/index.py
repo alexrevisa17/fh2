@@ -2383,6 +2383,7 @@ def api_debug():
 
         return jsonify({
             "success": True,
+            "debug_version": "DEBUG-2026-08-15-A",
 
             "request": {
                 "original_url": video_url,
