@@ -548,6 +548,31 @@ class FaphouseClient:
                 if response.status_code == 200:
 
                     html = self._decode_response(response)
+                    for keyword in [
+                        "video-pr",
+                        "m3u8",
+                        "sources",
+                        "source",
+                        "stream",
+                        "hls",
+                        "videoUrl",
+                        "video_url"
+                    ]:
+
+                        pos = html.lower().find(keyword.lower())
+    
+                        if pos != -1:
+
+                            logger.info(
+                                f"🔎 FOUND '{keyword}' at position {pos}"
+                            )
+
+                            start = max(0, pos - 500)
+                            end = min(len(html), pos + 1500)
+
+                            logger.info(
+                                "📄 CONTEXT:\n" + html[start:end]
+                            )
 
                     if html:
 
