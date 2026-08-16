@@ -1,8 +1,5 @@
 from flask import Flask, jsonify, request, render_template, render_template_string, session, redirect
 from supabase import create_client
-from urllib.parse import urljoin, unquote
-from html import unescape
-
 import requests
 import re
 import json
@@ -18,80 +15,52 @@ import random
 import string
 from io import BytesIO
 
-
-# ============================================================
-# APP
-# ============================================================
-
 app = Flask(
     __name__,
     template_folder="../templates",
     static_folder="../static"
 )
-
-app.secret_key = os.environ.get(
-    "FLASK_SECRET_KEY",
-    "change-this-secret-key"
-)
-
-
-# ============================================================
-# SUPABASE
-# ============================================================
+app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError(
-        "SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY wajib diatur di Vercel Environment Variables."
-    )
 
 supabase = create_client(
     SUPABASE_URL,
     SUPABASE_KEY
 )
 
-
-# ============================================================
-# LOGGING
-# ============================================================
-
-logging.basicConfig(level=logging.INFO)
-
-logger = logging.getLogger(__name__)
-
-
-# ============================================================
-# LICENSE SYSTEM
-# ============================================================
-
 @app.before_request
 def verify_license():
 
-    # Route admin tidak membutuhkan lisensi user
+    # Semua route admin tidak perlu lisensi user
     if request.endpoint and request.endpoint.startswith("admin_"):
         return
 
-    # Static files
+    # File static
     if request.endpoint == "static":
         return
 
-    # Halaman license
+    # Halaman lisensi
     if request.endpoint == "license_page":
         return
 
+    # Ambil session
     license_key = session.get("license_key")
     device_id = session.get("device_id")
 
+    # Tidak ada session lisensi
     if not license_key or not device_id:
         session.clear()
         return redirect("/license")
 
+    # Cek lisensi masih aktif dan belum expired
     if not check_license(license_key):
         session.clear()
         return redirect("/license")
 
+    # Pastikan device yang sedang menggunakan session
+    # masih terdaftar pada lisensi tersebut
     try:
 
         license_result = (
@@ -119,24 +88,24 @@ def verify_license():
             .execute()
         )
 
+        # Device sudah dihapus oleh admin
         if not device_result.data:
             session.clear()
             return redirect("/license")
 
     except Exception as e:
 
-        logger.error(
-            f"Device verification error: {e}"
-        )
+        logger.error(f"Device verification error: {e}")
 
         session.clear()
-
         return redirect("/license")
 
-
 def check_license(key):
-
     try:
+
+        # =========================
+        # AMBIL LICENSE
+        # =========================
 
         result = (
             supabase
@@ -152,24 +121,25 @@ def check_license(key):
 
         license_data = result.data
 
-        # Status
-        if str(
-            license_data.get("status", "")
-        ).lower() != "active":
+
+        # =========================
+        # CEK STATUS
+        # =========================
+
+        if license_data["status"].lower() != "active":
             return False
 
-        # Aktivasi pertama
-        if license_data.get("activated_at") is None:
+
+        # =========================
+        # AKTIVASI PERTAMA
+        # =========================
+
+        if license_data["activated_at"] is None:
 
             activated = datetime.now(timezone.utc)
 
             expires = activated + timedelta(
-                days=int(
-                    license_data.get(
-                        "duration_days",
-                        30
-                    )
-                )
+                days=license_data["duration_days"]
             )
 
             (
@@ -185,17 +155,13 @@ def check_license(key):
 
             license_data["expires_at"] = expires.isoformat()
 
-        # Expired
-        expires_raw = license_data.get("expires_at")
 
-        if not expires_raw:
-            return False
+        # =========================
+        # CEK EXPIRED
+        # =========================
 
         expires_at = datetime.fromisoformat(
-            str(expires_raw).replace(
-                "Z",
-                "+00:00"
-            )
+            license_data["expires_at"].replace("Z", "+00:00")
         )
 
         if datetime.now(timezone.utc) > expires_at:
@@ -212,25 +178,24 @@ def check_license(key):
 
             return False
 
-        # Device
-        session_device_id = session.get(
-            "device_id"
-        )
 
+        # =========================
+        # CEK DEVICE SESSION
+        # =========================
+
+        session_device_id = session.get("device_id")
+
+        # Kalau session belum mempunyai device_id,
+        # jangan langsung dianggap valid untuk request
+        # yang sudah login.
         if session_device_id:
 
             device_result = (
                 supabase
                 .table("license_devices")
                 .select("id, device_id")
-                .eq(
-                    "license_id",
-                    license_data["id"]
-                )
-                .eq(
-                    "device_id",
-                    session_device_id
-                )
+                .eq("license_id", license_data["id"])
+                .eq("device_id", session_device_id)
                 .maybe_single()
                 .execute()
             )
@@ -238,69 +203,58 @@ def check_license(key):
             if not device_result or not device_result.data:
 
                 logger.warning(
-                    "Device tidak terdaftar: %s",
-                    session_device_id
+                    f"Device sudah tidak terdaftar: "
+                    f"{session_device_id}"
                 )
 
                 return False
 
-            # Update last_seen
+
+            # =========================
+            # UPDATE LAST SEEN
+            # =========================
+
             try:
 
-                (
-                    supabase
-                    .table("license_devices")
+                supabase \
+                    .table("license_devices") \
                     .update({
                         "last_seen": datetime.now(
                             timezone.utc
                         ).isoformat()
-                    })
-                    .eq(
-                        "id",
-                        device_result.data["id"]
-                    )
+                    }) \
+                    .eq("id", device_result.data["id"]) \
                     .execute()
-                )
 
             except Exception as e:
-
                 logger.warning(
-                    "Gagal update last_seen: %s",
-                    e
+                    f"Gagal update last_seen: {e}"
                 )
 
         return True
 
+
     except Exception as e:
 
         logger.error(
-            "License Error: %s",
-            e
+            f"License Error: {e}"
         )
 
         return False
 
-
-def register_device(
-    license_key,
-    device_id
-):
-
+def register_device(license_key, device_id):
     try:
 
-        logger.info(
-            "REGISTER DEVICE: %s",
-            device_id
-        )
+        print("REGISTER DEVICE")
+        print("License:", license_key)
+        print("Device:", device_id)
 
+        # Ambil data lisensi
         result = (
             supabase
             .table("licenses")
             .select("*")
-            .eq(
-                "license_key",
-                license_key
-            )
+            .eq("license_key", license_key)
             .single()
             .execute()
         )
@@ -309,29 +263,21 @@ def register_device(
             return False
 
         license_data = result.data
-
         license_id = license_data["id"]
 
-        # Apakah device sudah ada?
+        # Cek apakah device sudah pernah terdaftar
         device = (
             supabase
             .table("license_devices")
             .select("*")
-            .eq(
-                "license_id",
-                license_id
-            )
-            .eq(
-                "device_id",
-                device_id
-            )
+            .eq("license_id", license_id)
+            .eq("device_id", device_id)
             .execute()
         )
 
-        now = datetime.now(
-            timezone.utc
-        ).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
+        # Device sudah ada → update last_seen
         if device.data:
 
             (
@@ -340,64 +286,38 @@ def register_device(
                 .update({
                     "last_seen": now
                 })
-                .eq(
-                    "id",
-                    device.data[0]["id"]
-                )
+                .eq("id", device.data[0]["id"])
                 .execute()
             )
 
             return True
 
-        # Hitung device
+        # Hitung jumlah device yang sudah terdaftar
         devices = (
             supabase
             .table("license_devices")
             .select("id")
-            .eq(
-                "license_id",
-                license_id
-            )
+            .eq("license_id", license_id)
             .execute()
         )
 
-        used_devices = len(
-            devices.data or []
-        )
+        used_devices = len(devices.data or [])
 
-        max_devices = int(
-            license_data.get(
-                "max_devices",
-                1
-            )
-        )
-
-        if used_devices >= max_devices:
+        if used_devices >= license_data["max_devices"]:
             return False
 
-        # Platform
-        ua = (
-            request.user_agent.string
-            or ""
-        ).lower()
-
+        # Deteksi platform
+        ua = (request.user_agent.string or "").lower()
         if "android" in ua:
             platform = "Android"
 
-        elif (
-            "iphone" in ua
-            or "ipad" in ua
-            or "ios" in ua
-        ):
+        elif "iphone" in ua or "ipad" in ua or "ios" in ua:
             platform = "iOS"
 
         elif "windows" in ua:
             platform = "Windows"
 
-        elif (
-            "macintosh" in ua
-            or "mac os" in ua
-        ):
+        elif "macintosh" in ua or "mac os" in ua:
             platform = "macOS"
 
         elif "linux" in ua:
@@ -406,16 +326,17 @@ def register_device(
         else:
             platform = "Unknown"
 
+
+        # Daftarkan device baru
+        print("INSERTING DEVICE...")
+
         (
             supabase
             .table("license_devices")
             .insert({
                 "license_id": license_id,
                 "device_id": device_id,
-                "device_name": (
-                    request.user_agent.string
-                    or "Unknown Device"
-                )[:120],
+                "device_name": request.user_agent.string[:120],
                 "platform": platform,
                 "first_seen": now,
                 "last_seen": now
@@ -426,982 +347,375 @@ def register_device(
         return True
 
     except Exception as e:
-
-        logger.exception(
-            "Register device error"
-        )
-
-        return False
-
+        import traceback
+        traceback.print_exc()
+        logger.error(e)
+        raise
 
 def generate_license_key():
-
-    chars = (
-        string.ascii_uppercase
-        + string.digits
-    )
+    chars = string.ascii_uppercase + string.digits
 
     parts = [
-        ''.join(
-            random.choices(
-                chars,
-                k=4
-            )
-        )
-        for _ in range(3)
+        ''.join(random.choices(chars, k=4)),
+        ''.join(random.choices(chars, k=4)),
+        ''.join(random.choices(chars, k=4)),
     ]
 
-    return (
-        "FAPHOUSE-"
-        + "-".join(parts)
-    )
+    return "FAPHOUSE-" + "-".join(parts)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# ============================================================
-# FAPHOUSE CONFIG
-# ============================================================
-
+#Add a Faphouse Premium Account
 BASE_URL = "https://faphouse2.com"
-
-EMAIL = os.environ.get(
-    "EMAIL",
-    ""
-)
-
-PASSWORD = os.environ.get(
-    "PASSWORD",
-    ""
-)
+EMAIL = os.environ.get("EMAIL") #Email
+PASSWORD = os.environ.get("PASSWORD") #Pass
 
 CACHE_DURATION = 300
 
-
-# ============================================================
-# FAPHOUSE CLIENT
-# ============================================================
-
 class FaphouseClient:
-
     def __init__(self):
-
         self.session = None
-
         self.logged_in = False
-
         self.session_created = False
-
-
-    # --------------------------------------------------------
-    # CREATE AUTH SESSION
-    # --------------------------------------------------------
-
+        
     def ensure_session(self):
-
-        if (
-            not self.session
-            or not self.logged_in
-        ):
-
-            logger.info(
-                "Creating authenticated Faphouse session..."
-            )
-
+        if not self.session or not self.logged_in:
+            logger.info("🔄 Creating new session...")
             self.session = requests.Session()
-
             self.session.headers.update({
-                "User-Agent":
-                    "Mozilla/5.0 "
-                    "(Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 "
-                    "Safari/537.36",
-
-                "Accept":
-                    "text/html,application/xhtml+xml,"
-                    "application/xml;q=0.9,"
-                    "image/avif,image/webp,"
-                    "image/apng,*/*;q=0.8",
-
-                "Accept-Language":
-                    "en-US,en;q=0.9",
-
-                "Accept-Encoding":
-                    "gzip, deflate, br",
-
-                "DNT": "1",
-
-                "Connection": "keep-alive",
-
-                "Upgrade-Insecure-Requests":
-                    "1"
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             })
-
             self.login()
-
         return self.session
-
-
-    # --------------------------------------------------------
-    # LOGIN
-    # --------------------------------------------------------
-
+    
     def login(self):
-
-        if not EMAIL or not PASSWORD:
-
-            logger.error(
-                "EMAIL/PASSWORD belum tersedia."
-            )
-
-            self.logged_in = False
-
-            return False
-
-        logger.info(
-            "Attempting Faphouse login: %s...",
-            EMAIL[:5]
-        )
-
+        logger.info(f"🔐 Attempting login with email: {EMAIL[:5]}...")
+        
         self.session.headers.update({
-
-            "User-Agent":
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/120.0.0.0 "
-                "Safari/537.36",
-
-            "Accept":
-                "application/json,"
-                "text/plain,*/*",
-
-            "Accept-Language":
-                "en-US,en;q=0.9",
-
-            "Accept-Encoding":
-                "gzip, deflate, br",
-
-            "Content-Type":
-                "application/json",
-
-            "Origin":
-                BASE_URL,
-
-            "Referer":
-                BASE_URL + "/",
-
-            "DNT":
-                "1"
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/json',
+            'Origin': BASE_URL,
+            'Referer': f'{BASE_URL}/',
+            'DNT': '1',
+            'Connection': 'keep-alive'
         })
-
+        
         try:
-
-            # Initial page
-            init_res = self.session.get(
-                BASE_URL,
-                timeout=15
-            )
-
-            logger.info(
-                "Initial page status: %s",
-                init_res.status_code
-            )
-
+            logger.info("  📡 Getting initial page...")
+            init_res = self.session.get(BASE_URL, timeout=10)
+            logger.info(f"  📡 Initial page status: {init_res.status_code}")
+            
             payload = {
                 "login": EMAIL,
                 "password": PASSWORD,
                 "rememberMe": "1",
                 "recaptcha": "",
-                "trackingParamsBag":
-                    "eyJwcm9tb19pZCI6IiIsInZpZGVvX2lkIjpudWxsLCJzdHVkaW9faWQiOm51bGwsInByb2R1Y2VyX2lkIjpudWxsLCJvcmllbnRhdGlvbiI6InN0cmFpZ2h0IiwibWxfcGFnZSI6Im1haW5fcGFnZSIsIm1sX3BhZ2VfdmFsdWVfaWQiOm51bGwsIm1sX3BhZ2VfdmFsdWUiOm51bGwsIm1sX3BhZ2VfbnVtYmVyIjpudWxsLCJtbF9yZWZfcGFnZV92YWx1ZV9pZCI6bnVsbCwibWxfcmVmX3BhZ2VfdmFsdWUiOiIiLCJtbF9yZWZfcGFnZV9udW1iZXIiOm51bGwsIm1sX3JlZl9wYWdlIjoiZGlyZWN0In0="
+                "trackingParamsBag": "eyJwcm9tb19pZCI6IiIsInZpZGVvX2lkIjpudWxsLCJzdHVkaW9faWQiOm51bGwsInByb2R1Y2VyX2lkIjpudWxsLCJvcmllbnRhdGlvbiI6InN0cmFpZ2h0IiwibWxfcGFnZSI6Im1haW5fcGFnZSIsIm1sX3BhZ2VfdmFsdWVfaWQiOm51bGwsIm1sX3BhZ2VfdmFsdWUiOm51bGwsIm1sX3BhZ2VfbnVtYmVyIjpudWxsLCJtbF9yZWZfcGFnZV92YWx1ZV9pZCI6bnVsbCwibWxfcmVmX3BhZ2VfdmFsdWUiOiIiLCJtbF9yZWZfcGFnZV9udW1iZXIiOm51bGwsIm1sX3JlZl9wYWdlIjoiZGlyZWN0In0="
             }
-
+            
+            logger.info("  📡 Sending login request...")
             login_res = self.session.post(
                 f"{BASE_URL}/api/auth/signin",
                 json=payload,
-                timeout=20
+                timeout=15
             )
-
-            logger.info(
-                "Login status: %s",
-                login_res.status_code
-            )
-
+            
+            logger.info(f"  📡 Login response status: {login_res.status_code}")
+            
             if login_res.status_code == 200:
-
                 try:
-
                     data = login_res.json()
-
-                    if (
-                        data.get("success")
-                        or data.get("data")
-                    ):
-
+                    if data.get('success') or data.get('data'):
                         self.logged_in = True
-
-                        self.session_created = True
-
-                        logger.info(
-                            "Faphouse login successful."
-                        )
-
+                        logger.info("✅ Login successful!")
                         return True
-
-                except Exception:
+                except:
                     pass
-
-                # Cookie fallback
-                if len(
-                    self.session.cookies
-                ) > 0:
-
+                
+                if len(self.session.cookies) > 0:
                     self.logged_in = True
-
-                    self.session_created = True
-
-                    logger.info(
-                        "Faphouse login successful via session cookie."
-                    )
-
+                    logger.info(f"✅ Login successful (session established)!")
                     return True
-
+            
             self.logged_in = False
-
-            self.session_created = False
-
             return False
-
+            
         except Exception as e:
-
-            logger.error(
-                "Faphouse login error: %s",
-                e
-            )
-
+            logger.error(f"❌ Login error: {str(e)}")
             self.logged_in = False
-
-            self.session_created = False
-
             return False
-
-
-    # --------------------------------------------------------
-    # RESPONSE DECODER
-    # --------------------------------------------------------
-
-    def _decode_response(
-        self,
-        response
-    ):
-
+    
+    def _decode_response(self, response):
         try:
+            content_encoding = response.headers.get('Content-Encoding', '')
+            
+            if content_encoding:
+                logger.info(f"  🔓 Decoding {content_encoding} response...")
 
-            encoding = (
-                response.headers
-                .get(
-                    "Content-Encoding",
-                    ""
-                )
-                .lower()
-            )
-
-            raw = response.content
-
-            if "br" in encoding:
-
+            if 'gzip' in content_encoding:
                 try:
-
-                    import brotli
-
-                    return brotli.decompress(
-                        raw
-                    ).decode(
-                        "utf-8",
-                        errors="ignore"
-                    )
-
-                except Exception:
+                    return gzip.decompress(response.content).decode('utf-8', errors='ignore')
+                except:
                     pass
 
-            if "gzip" in encoding:
-
+            if 'deflate' in content_encoding:
                 try:
-
-                    return gzip.decompress(
-                        raw
-                    ).decode(
-                        "utf-8",
-                        errors="ignore"
-                    )
-
-                except Exception:
-                    pass
-
-            if "deflate" in encoding:
-
-                try:
-
-                    return zlib.decompress(
-                        raw
-                    ).decode(
-                        "utf-8",
-                        errors="ignore"
-                    )
-
-                except Exception:
-
+                    return zlib.decompress(response.content).decode('utf-8', errors='ignore')
+                except:
                     try:
-
-                        return zlib.decompress(
-                            raw,
-                            -zlib.MAX_WBITS
-                        ).decode(
-                            "utf-8",
-                            errors="ignore"
-                        )
-
-                    except Exception:
+                        return zlib.decompress(response.content, -zlib.MAX_WBITS).decode('utf-8', errors='ignore')
+                    except:
                         pass
 
-            return response.text or ""
-
-        except Exception as e:
-
-            logger.warning(
-                "Response decode error: %s",
-                e
-            )
-
-            return response.text or ""
-
-
-    # --------------------------------------------------------
-    # NORMALIZE URL
-    # --------------------------------------------------------
-
-    def _normalize_url(
-        self,
-        value,
-        page_url
-    ):
-
-        if not value:
-            return None
-
-        value = str(value)
-
-        value = (
-            unescape(value)
-        )
-
-        value = (
-            value
-            .replace("\\/", "/")
-            .replace("\\u002F", "/")
-            .replace("\\u002f", "/")
-            .replace("\\u003A", ":")
-            .replace("\\u003a", ":")
-            .replace("\\u0026", "&")
-            .replace("\\u003F", "?")
-            .replace("\\u003f", "?")
-            .replace("&amp;", "&")
-        )
-
-        try:
-            value = unquote(value)
-        except Exception:
-            pass
-
-        value = value.strip()
-
-        value = value.strip(
-            "\"'`<> "
-        )
-
-        if value.startswith("//"):
-            value = "https:" + value
-
-        if value.startswith("/"):
-            value = urljoin(
-                page_url,
-                value
-            )
-
-        if (
-            value.startswith("http://")
-            or value.startswith("https://")
-        ):
-
-            return value
-
-        return None
-
-
-    # --------------------------------------------------------
-    # EXTRACT VIDEO URLs
-    # --------------------------------------------------------
-
-    def _extract_video_urls(
-        self,
-        html,
-        page_url
-    ):
-
-        if not html:
-            return []
-
-        # Bersihkan control characters
-        html = re.sub(
-            r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]",
-            "",
-            html
-        )
-
-        # HTML entity
-        html = unescape(html)
-
-        found = []
-
-        def add(value):
-
-            normalized = self._normalize_url(
-                value,
-                page_url
-            )
-
-            if not normalized:
-                return
-
-            lower = normalized.lower()
-
-            # Hanya kandidat stream video
-            if (
-                ".m3u8" in lower
-                or "video-pr.xhcdn.com" in lower
-                or ".mp4" in lower
-                or "/hls/" in lower
-            ):
-
-                if normalized not in found:
-
-                    found.append(
-                        normalized
-                    )
-
-
-        # ====================================================
-        # 1. URL M3U8 langsung
-        # ====================================================
-
-        patterns = [
-
-            r'https?://[^"\'<>\s\\]+\.m3u8(?:\?[^"\'<>\s\\]*)?',
-
-            r'//[^"\'<>\s\\]+\.m3u8(?:\?[^"\'<>\s\\]*)?',
-
-            r'["\']([^"\']+\.m3u8(?:\?[^"\']*)?)["\']',
-
-            r'["\']([^"\']*video-pr\.xhcdn\.com[^"\']*)["\']',
-
-            r'["\']([^"\']+\.mp4(?:\?[^"\']*)?)["\']',
-
-            r'["\']([^"\']+/hls/[^"\']+)["\']'
-        ]
-
-        for pattern in patterns:
-
-            try:
-
-                matches = re.findall(
-                    pattern,
-                    html,
-                    re.IGNORECASE
-                )
-
-                for match in matches:
-
-                    if isinstance(
-                        match,
-                        tuple
-                    ):
-                        match = match[0]
-
-                    add(match)
-
-            except Exception:
-                pass
-
-
-        # ====================================================
-        # 2. JSON-like fields
-        # ====================================================
-
-        field_patterns = [
-
-            r'["\']?(?:src|url|file|source|videoUrl|video_url|stream|streamUrl|stream_url)["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-
-            r'["\']?(?:hls|hlsUrl|hls_url|m3u8)["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-
-            r'["\']?(?:playlist|playlistUrl|playlist_url)["\']?\s*[:=]\s*["\']([^"\']+)["\']'
-        ]
-
-        for pattern in field_patterns:
-
-            matches = re.findall(
-                pattern,
-                html,
-                re.IGNORECASE
-            )
-
-            for match in matches:
-                add(match)
-
-
-        # ====================================================
-        # 3. data-* attributes
-        # ====================================================
-
-        data_patterns = [
-
-            r'data-(?:src|url|video|source|file|stream)\s*=\s*["\']([^"\']+)["\']',
-
-            r'data-(?:video-url|video_url|stream-url|stream_url)\s*=\s*["\']([^"\']+)["\']',
-
-            r'data-sources\s*=\s*["\']([^"\']+)["\']'
-        ]
-
-        for pattern in data_patterns:
-
-            matches = re.findall(
-                pattern,
-                html,
-                re.IGNORECASE
-            )
-
-            for match in matches:
-
-                add(match)
-
-                # Kadang data-sources berisi JSON
+            if 'br' in content_encoding:
                 try:
-
-                    decoded = unescape(
-                        match
-                    )
-
-                    parsed = json.loads(
-                        decoded
-                    )
-
-                    self._extract_from_json(
-                        parsed,
-                        page_url,
-                        found
-                    )
-
-                except Exception:
+                    import brotli
+                    return brotli.decompress(response.content).decode('utf-8', errors='ignore')
+                except ImportError:
+                    logger.warning("  ⚠️ Brotli not installed, skipping...")
+                except:
                     pass
 
-
-        # ====================================================
-        # 4. Cari video-pr di seluruh HTML
-        # ====================================================
-
-        video_pr_matches = re.findall(
-            r'https?://video-pr\.xhcdn\.com[^"\'<>\s\\]+',
-            html,
-            re.IGNORECASE
-        )
-
-        for value in video_pr_matches:
-            add(value)
-
-
-        # ====================================================
-        # 5. Cari URL yang di-escape
-        # ====================================================
-
-        escaped_matches = re.findall(
-            r'https?:\\\\?/\\\\?/[^"\'<>\s]+',
-            html,
-            re.IGNORECASE
-        )
-
-        for value in escaped_matches:
-            add(value)
-
-
-        return found
-
-
-    # --------------------------------------------------------
-    # RECURSIVE JSON EXTRACTION
-    # --------------------------------------------------------
-
-    def _extract_from_json(
-        self,
-        data,
-        page_url,
-        found
-    ):
-
-        if isinstance(data, dict):
-
-            for key, value in data.items():
-
-                key_lower = str(
-                    key
-                ).lower()
-
-                if isinstance(
-                    value,
-                    str
-                ):
-
-                    if (
-                        "url" in key_lower
-                        or "src" in key_lower
-                        or "file" in key_lower
-                        or "video" in key_lower
-                        or "stream" in key_lower
-                        or "hls" in key_lower
-                        or "source" in key_lower
-                        or "playlist" in key_lower
-                    ):
-
-                        normalized = (
-                            self._normalize_url(
-                                value,
-                                page_url
-                            )
-                        )
-
-                        if normalized:
-
-                            lower = normalized.lower()
-
-                            if (
-                                ".m3u8" in lower
-                                or ".mp4" in lower
-                                or "video-pr.xhcdn.com" in lower
-                                or "/hls/" in lower
-                            ):
-
-                                if normalized not in found:
-
-                                    found.append(
-                                        normalized
-                                    )
-
-                    # JSON tersimpan sebagai string
-                    if value.strip().startswith(
-                        "{"
-                    ) or value.strip().startswith(
-                        "["
-                    ):
-
-                        try:
-
-                            nested = json.loads(
-                                value
-                            )
-
-                            self._extract_from_json(
-                                nested,
-                                page_url,
-                                found
-                            )
-
-                        except Exception:
-                            pass
-
-                elif isinstance(
-                    value,
-                    (dict, list)
-                ):
-
-                    self._extract_from_json(
-                        value,
-                        page_url,
-                        found
-                    )
-
-        elif isinstance(
-            data,
-            list
-        ):
-
-            for item in data:
-
-                self._extract_from_json(
-                    item,
-                    page_url,
-                    found
-                )
-
-
-    # --------------------------------------------------------
-    # GET M3U8
-    # --------------------------------------------------------
-
+            try:
+                return response.text
+            except:
+                pass
+            
+            return response.text if response.text else str(response.content)
+            
+        except Exception as e:
+            logger.error(f"  ❌ Decoding error: {str(e)}")
+            return response.text if response.text else str(response.content)
+    
     @lru_cache(maxsize=100)
-    def get_m3u8_url(
-        self,
-        video_url
-    ):
+    def get_m3u8_url(self, video_url):
 
-        logger.info(
-            "Processing video URL: %s",
-            video_url[:120]
-        )
-
-        if "#" in video_url:
-            video_url = video_url.split(
-                "#",
-                1
-            )[0]
-
-        # ====================================================
-        # AUTHENTICATED SESSION
-        # ====================================================
+        logger.info(f"🔍 Processing video URL: {video_url[:80]}...")
+        
+        if '#' in video_url:
+            video_url = video_url.split('#')[0]
 
         session = self.ensure_session()
-
         if session:
-
             try:
-
+                logger.info("📡 Attempt 1: Using authenticated session...")
+                
                 headers = {
-
-                    "User-Agent":
-                        "Mozilla/5.0 "
-                        "(Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 "
-                        "Safari/537.36",
-
-                    "Accept":
-                        "text/html,application/xhtml+xml,"
-                        "application/xml;q=0.9,"
-                        "image/avif,image/webp,"
-                        "image/apng,*/*;q=0.8",
-
-                    "Accept-Language":
-                        "en-US,en;q=0.9",
-
-                    "Referer":
-                        BASE_URL + "/",
-
-                    "DNT":
-                        "1",
-
-                    "Upgrade-Insecure-Requests":
-                        "1"
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Referer': BASE_URL,
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
                 }
-
+                
                 response = session.get(
                     video_url,
-                    timeout=20,
-                    headers=headers,
-                    allow_redirects=True
+                    timeout=15,
+                    headers=headers
                 )
 
                 logger.info(
-                    "Authenticated page status: %s",
-                    response.status_code
+                    f"📡 Session GET Status: {response.status_code}"
                 )
 
                 logger.info(
-                    "Authenticated final URL: %s",
-                    response.url
+                    f"📡 Session Final URL: {response.url}"
+                )
+
+                logger.info(
+                    f"📡 Session Content-Type: "
+                    f"{response.headers.get('Content-Type')}"
+                )
+
+                logger.info(
+                    f"📡 Session Content-Length: "
+                    f"{len(response.content)}"
                 )
 
                 if response.status_code == 200:
 
-                    html = (
-                        self._decode_response(
-                            response
-                        )
-                    )
+                    html = self._decode_response(response)
+                    for keyword in [
+                        "video-pr",
+                        "m3u8",
+                        "sources",
+                        "source",
+                        "stream",
+                        "hls",
+                        "videoUrl",
+                        "video_url"
+                    ]:
 
-                    candidates = (
-                        self._extract_video_urls(
-                            html,
-                            response.url
-                        )
-                    )
+                        pos = html.lower().find(keyword.lower())
+    
+                        if pos != -1:
 
-                    logger.info(
-                        "Authenticated candidates: %s",
-                        len(candidates)
-                    )
+                            logger.info(
+                                f"🔎 FOUND '{keyword}' at position {pos}"
+                            )
 
-                    if candidates:
+                            start = max(0, pos - 500)
+                            end = min(len(html), pos + 1500)
 
-                        # Utamakan m3u8
-                        for candidate in candidates:
+                            logger.info(
+                                "📄 CONTEXT:\n" + html[start:end]
+                            )
 
-                            if ".m3u8" in candidate.lower():
+                    if html:
 
-                                logger.info(
-                                    "M3U8 found: %s",
-                                    candidate[:180]
-                                )
-
-                                return candidate
-
-                        # Jika hanya video-pr/mp4
                         logger.info(
-                            "Video candidate found: %s",
-                            candidates[0][:180]
+                            f"📄 HTML length: {len(html)}"
                         )
 
-                        return candidates[0]
+                        logger.info(
+                            f"📄 Contains m3u8: "
+                            f"{'.m3u8' in html.lower()}"
+                        )
 
+                        logger.info(
+                            f"📄 Contains login: "
+                            f"{'login' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 Contains signin: "
+                            f"{'signin' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 Contains video: "
+                            f"{'video' in html.lower()}"
+                        )
+
+                        logger.info(
+                            f"📄 HTML preview: "
+                            f"{html[:1000]}"
+                        )
+
+                        m3u8 = self._extract_m3u8(html)
+
+                        if m3u8:
+                            logger.info(
+                                "✅ Found M3U8 URL with session!"
+                            )
+                            return m3u8
             except Exception as e:
+                logger.warning(f"⚠️ Session attempt failed: {str(e)}")
 
-                logger.warning(
-                    "Authenticated fetch failed: %s",
-                    e
-                )
-
-
-        # ====================================================
-        # PUBLIC/GUEST FALLBACK
-        # ====================================================
-
-        logger.info(
-            "Trying public page fallback..."
-        )
-
+        logger.info("🔄 Attempt 2: Trying guest fetch...")
         try:
-
             guest_session = requests.Session()
-
             guest_session.headers.update({
-
-                "User-Agent":
-                    "Mozilla/5.0 "
-                    "(Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 "
-                    "Safari/537.36",
-
-                "Accept":
-                    "text/html,application/xhtml+xml,"
-                    "application/xml;q=0.9,"
-                    "image/avif,image/webp,"
-                    "*/*;q=0.8",
-
-                "Accept-Language":
-                    "en-US,en;q=0.9",
-
-                "Referer":
-                    BASE_URL + "/"
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Referer': BASE_URL,
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             })
-
-            response = guest_session.get(
-                video_url,
-                timeout=20,
-                allow_redirects=True
-            )
-
-            logger.info(
-                "Guest status: %s",
-                response.status_code
-            )
-
+            
+            response = guest_session.get(video_url, timeout=15)
+            logger.info(f"📡 Guest Status: {response.status_code}")
+            
             if response.status_code == 200:
-
-                html = (
-                    self._decode_response(
-                        response
-                    )
-                )
-
-                candidates = (
-                    self._extract_video_urls(
-                        html,
-                        response.url
-                    )
-                )
-
-                logger.info(
-                    "Guest candidates: %s",
-                    len(candidates)
-                )
-
-                for candidate in candidates:
-
-                    if ".m3u8" in candidate.lower():
-
-                        return candidate
-
-                if candidates:
-                    return candidates[0]
-
+                html = self._decode_response(response)
+                if html:
+                    m3u8 = self._extract_m3u8(html)
+                    if m3u8:
+                        logger.info("✅ Found M3U8 URL with guest!")
+                        return m3u8
         except Exception as e:
-
-            logger.warning(
-                "Guest fetch failed: %s",
-                e
-            )
-
-
-        logger.error(
-            "No playable video source found."
-        )
-
+            logger.warning(f"⚠️ Guest attempt failed: {str(e)}")
+        
+        logger.error("❌ Failed to find M3U8 URL with all attempts.")
         return None
+    
+    def _extract_m3u8(self, html_content):
 
+        if not html_content:
+            return None
 
-# ============================================================
-# GLOBAL CLIENT
-# ============================================================
+        html_content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', html_content)
+        
+        patterns = [
+            r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*',
+            r'https?://[^\s"\'<>]+\.m3u8(?:\?[^\s"\'<>]*)?',
+            r'//[^\s"\'<>]+\.m3u8[^\s"\'<>]*',
+
+            r'src\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'src\s*=\s*["\']([^"\']+\.m3u8(?:\?[^"\']*)?)["\']',
+            r'href\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+
+            r'file\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'file\s*:\s*["\']([^"\']+\.m3u8(?:\?[^"\']*)?)["\']',
+            r'url\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'url\s*:\s*["\']([^"\']+\.m3u8(?:\?[^"\']*)?)["\']',
+            r'source\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+        ]
+        
+        found_urls = []
+        for pattern in patterns:
+            matches = re.findall(pattern, html_content, re.IGNORECASE | re.DOTALL)
+            if matches:
+                for match in matches:
+                    if isinstance(match, tuple):
+                        match = match[0]
+                    m3u8_url = match.strip()
+                    if '"' in m3u8_url:
+                        m3u8_url = m3u8_url.split('"')[0]
+                    if "'" in m3u8_url:
+                        m3u8_url = m3u8_url.split("'")[0]
+                    if '&amp;' in m3u8_url:
+                        m3u8_url = m3u8_url.replace('&amp;', '&')
+                    if m3u8_url.startswith('//'):
+                        m3u8_url = 'https:' + m3u8_url
+
+                    if m3u8_url.startswith('http') and '.m3u8' in m3u8_url:
+                        found_urls.append(m3u8_url)
+
+        seen = set()
+        unique_urls = []
+        for url in found_urls:
+            if url not in seen:
+                seen.add(url)
+                unique_urls.append(url)
+        
+        if unique_urls:
+            logger.info(f"✅ Found {len(unique_urls)} M3U8 URLs")
+            return unique_urls[0] 
+        
+        return None
 
 client = FaphouseClient()
 
-
-# ============================================================
-# TEST ROUTE
-# ============================================================
-
-@app.route(
-    "/api/test-route"
-)
+@app.route('/api/test-route')
 def test_route():
-
     return jsonify({
-
         "success": True,
-
-        "message":
-            "TEST ROUTE AKTIF",
-
-        "version":
-            "FAPHOUSE-PLAYER-OPTIMIZED-001"
+        "message": "TEST ROUTE AKTIF",
+        "version": "DEBUG-001"
     })
 
-
-# ============================================================
-# ADMIN - GENERATE LICENSE
-# ============================================================
-
-@app.route(
-    "/admin/generate-license",
-    methods=["POST"]
-)
+@app.route("/admin/generate-license", methods=["POST"])
 def admin_generate_license():
 
-    if not session.get(
-        "admin_logged_in"
-    ):
-
+    # Pastikan admin sudah login
+    if not session.get("admin_logged_in"):
         return jsonify({
             "success": False,
             "message": "Unauthorized"
@@ -1409,125 +723,47 @@ def admin_generate_license():
 
     try:
 
-        data = (
-            request.get_json(
-                silent=True
-            )
-            or {}
-        )
+        data = request.get_json()
 
-        name = str(
-            data.get(
-                "name",
-                ""
-            )
-        ).strip()
+        name = data.get("name", "").strip()
+        duration_days = int(data.get("duration_days", 30))
+        max_devices = int(data.get("max_devices", 1))
+        notes = data.get("notes", "").strip()
 
-        duration_days = int(
-            data.get(
-                "duration_days",
-                30
-            )
-        )
-
-        max_devices = int(
-            data.get(
-                "max_devices",
-                1
-            )
-        )
-
-        notes = str(
-            data.get(
-                "notes",
-                ""
-            )
-        ).strip()
-
-        if duration_days <= 0:
-            return jsonify({
-                "success": False,
-                "message":
-                    "duration_days harus lebih dari 0"
-            }), 400
-
-        if max_devices <= 0:
-            return jsonify({
-                "success": False,
-                "message":
-                    "max_devices harus lebih dari 0"
-            }), 400
-
-        license_key = (
-            generate_license_key()
-        )
+        license_key = generate_license_key()
 
         (
             supabase
             .table("licenses")
             .insert({
-
-                "license_key":
-                    license_key,
-
-                "name":
-                    name,
-
-                "status":
-                    "active",
-
-                "duration_days":
-                    duration_days,
-
-                "max_devices":
-                    max_devices,
-
-                "notes":
-                    notes
+                "license_key": license_key,
+                "name": name,
+                "status": "active",
+                "duration_days": duration_days,
+                "max_devices": max_devices,
+                "notes": notes
             })
             .execute()
         )
 
         return jsonify({
-
-            "success":
-                True,
-
-            "license_key":
-                license_key
+            "success": True,
+            "license_key": license_key
         })
 
     except Exception as e:
 
-        logger.error(
-            "Generate License Error: %s",
-            e
-        )
+        logger.error(f"Generate License Error: {e}")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "message":
-                str(e)
+            "success": False,
+            "message": str(e)
         }), 500
 
-
-# ============================================================
-# ADMIN - LIST LICENSE
-# ============================================================
-
-@app.route(
-    "/admin/licenses",
-    methods=["GET"]
-)
+@app.route("/admin/licenses", methods=["GET"])
 def admin_list_license():
 
-    if not session.get(
-        "admin_logged_in"
-    ):
-
+    if not session.get("admin_logged_in"):
         return jsonify({
             "success": False
         }), 401
@@ -1538,77 +774,40 @@ def admin_list_license():
             supabase
             .table("licenses")
             .select("*")
-            .order(
-                "created_at",
-                desc=True
-            )
+            .order("created_at", desc=True)
             .execute()
         )
 
-        licenses = (
-            result.data
-            or []
-        )
+        licenses = result.data or []
 
-        total_license = len(
-            licenses
-        )
+        total_license = len(licenses)
 
         active_license = sum(
             1
-            for item in licenses
-            if item.get(
-                "status"
-            ) == "active"
+            for license in licenses
+            if license.get("status") == "active"
         )
 
         return jsonify({
-
-            "success":
-                True,
-
-            "licenses":
-                licenses,
-
-            "total":
-                total_license,
-
-            "active":
-                active_license
+            "success": True,
+            "licenses": licenses,
+            "total": total_license,
+            "active": active_license
         })
 
     except Exception as e:
 
-        logger.error(
-            "List License Error: %s",
-            e
-        )
+        logger.error(f"List License Error: {e}")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "message":
-                str(e)
+            "success": False,
+            "message": str(e)
         }), 500
 
+@app.route("/admin/license-devices/<license_id>")
+def admin_license_devices(license_id):
 
-# ============================================================
-# ADMIN - LICENSE DEVICES
-# ============================================================
-
-@app.route(
-    "/admin/license-devices/<license_id>"
-)
-def admin_license_devices(
-    license_id
-):
-
-    if not session.get(
-        "admin_logged_in"
-    ):
-
+    if not session.get("admin_logged_in"):
         return jsonify({
             "success": False,
             "message": "Unauthorized"
@@ -1620,58 +819,29 @@ def admin_license_devices(
             supabase
             .table("license_devices")
             .select("*")
-            .eq(
-                "license_id",
-                license_id
-            )
-            .order(
-                "first_seen",
-                desc=False
-            )
+            .eq("license_id", license_id)
+            .order("first_seen", desc=False)
             .execute()
         )
 
         return jsonify({
-
-            "success":
-                True,
-
-            "devices":
-                result.data
-                or []
+            "success": True,
+            "devices": result.data or []
         })
 
     except Exception as e:
 
-        logger.error(
-            "Device List Error: %s",
-            e
-        )
+        logger.error(f"Device List Error: {e}")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "message":
-                str(e)
+            "success": False,
+            "message": str(e)
         }), 500
-
-
-# ============================================================
-# ADMIN - UPDATE LICENSE
-# ============================================================
-
-@app.route(
-    "/admin/update-license",
-    methods=["POST"]
-)
+        
+@app.route("/admin/update-license", methods=["POST"])
 def admin_update_license():
 
-    if not session.get(
-        "admin_logged_in"
-    ):
-
+    if not session.get("admin_logged_in"):
         return jsonify({
             "success": False,
             "message": "Unauthorized"
@@ -1679,107 +849,61 @@ def admin_update_license():
 
     try:
 
-        data = (
-            request.get_json(
-                silent=True
-            )
-            or {}
-        )
+        data = request.get_json(silent=True) or {}
 
-        license_id = data.get(
-            "id"
-        )
-
-        status = data.get(
-            "status"
-        )
+        license_id = data.get("id")
+        status = data.get("status")
 
         if not license_id:
-
             return jsonify({
                 "success": False,
-                "message":
-                    "License ID tidak ditemukan"
+                "message": "License ID tidak ditemukan"
             }), 400
 
-        if status not in [
-            "active",
-            "inactive"
-        ]:
-
+        if status not in ["active", "inactive"]:
             return jsonify({
                 "success": False,
-                "message":
-                    "Status license tidak valid"
+                "message": "Status license tidak valid"
             }), 400
 
         result = (
             supabase
             .table("licenses")
             .update({
-                "status":
-                    status
+                "status": status
             })
-            .eq(
-                "id",
-                license_id
-            )
+            .eq("id", license_id)
             .execute()
         )
 
         if not result.data:
-
             return jsonify({
                 "success": False,
-                "message":
-                    "License tidak ditemukan"
+                "message": "License tidak ditemukan"
             }), 404
 
         return jsonify({
-
-            "success":
-                True,
-
-            "message":
-                (
-                    "License berhasil diaktifkan"
-                    if status == "active"
-                    else
-                    "License berhasil dinonaktifkan"
-                )
+            "success": True,
+            "message": (
+                "License berhasil diaktifkan"
+                if status == "active"
+                else "License berhasil dinonaktifkan"
+            )
         })
 
     except Exception as e:
 
-        logger.error(
-            "Update License Error: %s",
-            e
-        )
+        logger.error(f"Update License Error: {e}")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "message":
-                str(e)
+            "success": False,
+            "message": str(e)
         }), 500
 
-
-# ============================================================
-# ADMIN - DELETE LICENSE
-# ============================================================
-
-@app.route(
-    "/admin/delete-license",
-    methods=["POST"]
-)
+@app.route("/admin/delete-license", methods=["POST"])
 def admin_delete_license():
 
-    if not session.get(
-        "admin_logged_in"
-    ):
-
+    if not session.get("admin_logged_in"):
         return jsonify({
             "success": False,
             "message": "Unauthorized"
@@ -1787,84 +911,48 @@ def admin_delete_license():
 
     try:
 
-        data = (
-            request.get_json(
-                silent=True
-            )
-            or {}
-        )
+        data = request.get_json(silent=True) or {}
 
-        license_id = data.get(
-            "id"
-        )
+        license_id = data.get("id")
 
         if not license_id:
-
             return jsonify({
                 "success": False,
-                "message":
-                    "License ID tidak ditemukan"
+                "message": "License ID tidak ditemukan"
             }), 400
 
         result = (
             supabase
             .table("licenses")
             .delete()
-            .eq(
-                "id",
-                license_id
-            )
+            .eq("id", license_id)
             .execute()
         )
 
         if not result.data:
-
             return jsonify({
                 "success": False,
-                "message":
-                    "License tidak ditemukan"
+                "message": "License tidak ditemukan"
             }), 404
 
         return jsonify({
-
-            "success":
-                True,
-
-            "message":
-                "License berhasil dihapus"
+            "success": True,
+            "message": "License berhasil dihapus"
         })
 
     except Exception as e:
 
-        logger.error(
-            "Delete License Error: %s",
-            e
-        )
+        logger.error(f"Delete License Error: {e}")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "message":
-                str(e)
+            "success": False,
+            "message": str(e)
         }), 500
 
-
-# ============================================================
-# ADMIN - RESET DEVICE
-# ============================================================
-
-@app.route(
-    "/admin/reset-device",
-    methods=["POST"]
-)
+@app.route("/admin/reset-device", methods=["POST"])
 def admin_reset_device():
 
-    if not session.get(
-        "admin_logged_in"
-    ):
-
+    if not session.get("admin_logged_in"):
         return jsonify({
             "success": False,
             "message": "Unauthorized"
@@ -1872,87 +960,117 @@ def admin_reset_device():
 
     try:
 
-        data = (
-            request.get_json(
-                silent=True
-            )
-            or {}
-        )
+        data = request.get_json(silent=True) or {}
 
-        device_id = data.get(
-            "device_id"
-        )
+        device_id = data.get("device_id")
 
         if not device_id:
-
             return jsonify({
                 "success": False,
-                "message":
-                    "Device ID tidak ditemukan"
+                "message": "Device ID tidak ditemukan"
             }), 400
+
+
+        logger.info(
+            f"ADMIN RESET DEVICE: {device_id}"
+        )
+
+
+        # =========================
+        # CEK DEVICE TERLEBIH DAHULU
+        # =========================
 
         existing = (
             supabase
             .table("license_devices")
             .select("*")
-            .eq(
-                "id",
-                device_id
-            )
+            .eq("id", device_id)
             .maybe_single()
             .execute()
         )
 
+
+        # Aman jika hasil query None
         if not existing or not existing.data:
+
+            logger.warning(
+                f"Device tidak ditemukan: {device_id}"
+            )
 
             return jsonify({
                 "success": False,
-                "message":
-                    "Device tidak ditemukan"
+                "message": "Device tidak ditemukan"
             }), 404
 
-        (
+
+        device_data = existing.data
+
+        logger.info(
+            f"Device ditemukan: "
+            f"{device_data.get('device_id')}"
+        )
+
+
+        # =========================
+        # DELETE DEVICE
+        # =========================
+
+        delete_result = (
             supabase
             .table("license_devices")
             .delete()
-            .eq(
-                "id",
-                device_id
-            )
+            .eq("id", device_id)
             .execute()
         )
+
+
+        # =========================
+        # VERIFIKASI DELETE
+        # =========================
 
         verify = (
             supabase
             .table("license_devices")
             .select("id")
-            .eq(
-                "id",
-                device_id
-            )
+            .eq("id", device_id)
             .maybe_single()
             .execute()
         )
 
+
+        # Jika device masih ada → DELETE gagal
+        #
+        # Penting:
+        # verify bisa None jika data sudah tidak ditemukan.
+        # Itu justru berarti DELETE berhasil.
         if verify and verify.data:
+
+            logger.error(
+                f"RESET GAGAL - Device masih ada: "
+                f"{device_id}"
+            )
 
             return jsonify({
                 "success": False,
-                "message":
-                    "Device gagal dihapus dari database"
+                "message": "Device gagal dihapus dari database"
             }), 500
 
+
+        # =========================
+        # RESET BERHASIL
+        # =========================
+
+        logger.info(
+            f"DEVICE RESET BERHASIL: {device_id}"
+        )
+
+
         return jsonify({
-
-            "success":
-                True,
-
-            "message":
-                "Device berhasil direset",
-
-            "device_id":
-                device_id
+            "success": True,
+            "message": "Device berhasil direset",
+            "device_id": device_id
         })
+
 
     except Exception as e:
 
@@ -1961,39 +1079,19 @@ def admin_reset_device():
         )
 
         return jsonify({
-
-            "success":
-                False,
-
-            "message":
-                str(e)
+            "success": False,
+            "message": str(e)
         }), 500
 
-
-# ============================================================
-# LICENSE PAGE
-# ============================================================
-
-@app.route(
-    "/license",
-    methods=["GET", "POST"]
-)
+@app.route('/license', methods=['GET', 'POST'])
 def license_page():
 
-    key = session.get(
-        "license_key"
-    )
+    key = session.get("license_key")
+    device_id = session.get("device_id")
 
-    device_id = session.get(
-        "device_id"
-    )
-
-    # Session masih valid
-    if (
-        key
-        and device_id
-        and check_license(key)
-    ):
+    # Jika session masih lengkap,
+    # pastikan lisensi DAN device masih valid
+    if key and device_id and check_license(key):
 
         try:
 
@@ -2001,98 +1099,49 @@ def license_page():
                 supabase
                 .table("licenses")
                 .select("id")
-                .eq(
-                    "license_key",
-                    key
-                )
+                .eq("license_key", key)
                 .single()
                 .execute()
             )
 
             if license_result.data:
 
-                license_id = (
-                    license_result
-                    .data["id"]
-                )
+                license_id = license_result.data["id"]
 
                 device_result = (
                     supabase
-                    .table(
-                        "license_devices"
-                    )
+                    .table("license_devices")
                     .select("id")
-                    .eq(
-                        "license_id",
-                        license_id
-                    )
-                    .eq(
-                        "device_id",
-                        device_id
-                    )
+                    .eq("license_id", license_id)
+                    .eq("device_id", device_id)
                     .execute()
                 )
 
                 if device_result.data:
-
                     return redirect("/")
 
         except Exception as e:
+            logger.error(f"License Session Check Error: {e}")
 
-            logger.error(
-                "License Session Check Error: %s",
-                e
-            )
-
+        # Device sudah tidak valid
         session.clear()
 
-    if request.method == "POST":
+    if request.method == 'POST':
 
-        key = (
-            request.form
-            .get(
-                "license",
-                ""
-            )
-            .strip()
-        )
-
-        device_id = (
-            request.form
-            .get(
-                "device_id",
-                ""
-            )
-            .strip()
-        )
-
-        if not device_id:
-
-            return render_template(
-                "license.html",
-                error=True,
-                message=
-                    "Device ID tidak ditemukan."
-            )
+        key = request.form.get("license", "").strip()
+        device_id = request.form.get("device_id", "").strip()
 
         if check_license(key):
 
-            if not register_device(
-                key,
-                device_id
-            ):
-
+            if not register_device(key, device_id):
                 return render_template(
                     "license.html",
                     error=True,
-                    message=
-                        "Batas maksimum perangkat telah tercapai."
+                    message="Batas maksimum perangkat telah tercapai."
                 )
 
             session["licensed"] = True
-
             session["license_key"] = key
-
             session["device_id"] = device_id
 
             return redirect("/")
@@ -2108,1874 +1157,1339 @@ def license_page():
     )
 
 
-# ============================================================
-# ADMIN LOGIN
-# ============================================================
-
-@app.route(
-    "/admin",
-    methods=["GET", "POST"]
-)
+@app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
 
-    if session.get(
-        "admin_logged_in"
-    ):
+    if session.get("admin_logged_in"):
+        return redirect("/admin/dashboard")
 
-        return redirect(
-            "/admin/dashboard"
-        )
+    if request.method == 'POST':
 
-    if request.method == "POST":
+        pin = request.form.get("pin", "").strip()
 
-        pin = (
-            request.form
-            .get(
-                "pin",
-                ""
-            )
-            .strip()
-        )
+        admin_pin = os.environ.get("ADMIN_PIN", "")
 
-        admin_pin = os.environ.get(
-            "ADMIN_PIN",
-            ""
-        )
+        if admin_pin and hmac.compare_digest(pin, admin_pin):
 
-        if (
-            admin_pin
-            and hmac.compare_digest(
-                pin,
-                admin_pin
-            )
-        ):
+            session["admin_logged_in"] = True
 
-            session[
-                "admin_logged_in"
-            ] = True
-
-            return redirect(
-                "/admin/dashboard"
-            )
+            return redirect("/admin/dashboard")
 
         return render_template(
             "admin_login.html",
             error=True
         )
 
-    return render_template(
-        "admin_login.html"
-    )
-
-
-# ============================================================
-# ADMIN DASHBOARD
-# ============================================================
-
-@app.route(
-    "/admin/dashboard"
-)
+    return render_template("admin_login.html")
+    
+@app.route('/admin/dashboard')
 def admin_dashboard():
 
-    if not session.get(
-        "admin_logged_in"
-    ):
+    if not session.get("admin_logged_in"):
+        return redirect("/admin")
 
-        return redirect(
-            "/admin"
-        )
+    return render_template("admin_dashboard.html")
 
-    return render_template(
-        "admin_dashboard.html"
-    )
-
-
-# ============================================================
-# ADMIN LOGOUT
-# ============================================================
-
-@app.route(
-    "/admin/logout"
-)
+@app.route('/admin/logout')
 def admin_logout():
 
-    session.pop(
-        "admin_logged_in",
-        None
-    )
+    session.pop("admin_logged_in", None)
 
-    return redirect(
-        "/admin"
-    )
-
-
-# ============================================================
-# HOME
-# ============================================================
+    return redirect("/admin")
 
 @app.route("/")
 def index():
 
-    key = session.get(
-        "license_key"
-    )
+    key = session.get("license_key")
 
     if not key:
-
-        return redirect(
-            "/license"
-        )
+        return redirect("/license")
 
     if not check_license(key):
-
         session.clear()
-
-        return redirect(
-            "/license"
-        )
+        return redirect("/license")
 
     return render_template_string("""
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+        <meta charset="UTF-8">
 
-<!DOCTYPE html>
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        >
 
-<html lang="id">
+        <title>🎬 Faphouse Player</title>
 
-<head>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                -webkit-tap-highlight-color: transparent;
+            }
 
-<meta charset="UTF-8">
+            html, body {
+                width: 100%;
+                min-height: 100%;
+            }
 
-<meta
-name="viewport"
-content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
->
+            body {
+                background: #08090d;
+                color: #fff;
+                font-family:
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    Roboto,
+                    Arial,
+                    sans-serif;
 
-<title>🎬 Faphouse Player</title>
+                min-height: 100vh;
+                min-height: 100dvh;
 
-<style>
+                padding: 24px 16px;
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
-}
+                position: relative;
+                overflow-x: hidden;
+            }
 
-html,
-body {
-    width: 100%;
-    min-height: 100%;
-}
+            /* Background glow */
 
-body {
+            body::before {
+                content: "";
+                position: fixed;
 
-    background: #08090d;
+                width: 430px;
+                height: 430px;
 
-    color: #fff;
+                top: -220px;
+                left: -180px;
 
-    font-family:
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Roboto,
-        Arial,
-        sans-serif;
+                background: rgba(0, 255, 140, 0.07);
 
-    min-height: 100vh;
-    min-height: 100dvh;
+                filter: blur(100px);
+                border-radius: 50%;
 
-    padding: 24px 16px;
+                pointer-events: none;
+            }
 
-    position: relative;
+            body::after {
+                content: "";
+                position: fixed;
 
-    overflow-x: hidden;
-}
+                width: 400px;
+                height: 400px;
 
-body::before {
+                right: -180px;
+                bottom: -200px;
 
-    content: "";
+                background: rgba(70, 90, 255, 0.06);
 
-    position: fixed;
+                filter: blur(110px);
+                border-radius: 50%;
 
-    width: 430px;
-    height: 430px;
+                pointer-events: none;
+            }
 
-    top: -220px;
-    left: -180px;
+            .page {
+                width: 100%;
+                max-width: 600px;
 
-    background:
-        rgba(0,255,140,0.07);
+                margin: 0 auto;
 
-    filter: blur(100px);
+                position: relative;
+                z-index: 2;
+            }
 
-    border-radius: 50%;
+            /* =========================
+               MAIN PLAYER
+            ========================= */
 
-    pointer-events: none;
-}
+            .player-box {
+                width: 100%;
 
-body::after {
+                background: rgba(22, 24, 31, 0.94);
 
-    content: "";
+                border: 1px solid rgba(255,255,255,0.08);
 
-    position: fixed;
+                border-radius: 24px;
 
-    width: 400px;
-    height: 400px;
+                padding: 32px 26px;
 
-    right: -180px;
-    bottom: -200px;
+                box-shadow:
+                    0 25px 70px rgba(0,0,0,0.55),
+                    inset 0 1px 0 rgba(255,255,255,0.04);
 
-    background:
-        rgba(70,90,255,0.06);
+                backdrop-filter: blur(18px);
+                -webkit-backdrop-filter: blur(18px);
 
-    filter: blur(110px);
+                text-align: center;
+            }
 
-    border-radius: 50%;
+            .logo {
+                width: 76px;
+                height: 76px;
 
-    pointer-events: none;
-}
+                margin: 0 auto 18px;
 
-.page {
+                display: flex;
+                align-items: center;
+                justify-content: center;
 
-    width: 100%;
+                border-radius: 22px;
 
-    max-width: 600px;
+                font-size: 38px;
 
-    margin: 0 auto;
+                background:
+                    linear-gradient(
+                        145deg,
+                        #1ed760,
+                        #0aa85a
+                    );
 
-    position: relative;
+                box-shadow:
+                    0 12px 30px rgba(30,215,96,0.22),
+                    inset 0 1px 0 rgba(255,255,255,0.25);
+            }
 
-    z-index: 2;
-}
+            h1 {
+                font-size: 28px;
+                line-height: 1.2;
 
-.player-box {
+                font-weight: 800;
 
-    width: 100%;
+                letter-spacing: 1.3px;
 
-    background:
-        rgba(22,24,31,0.94);
+                margin: 0;
+            }
 
-    border:
-        1px solid
-        rgba(255,255,255,0.08);
+            .subtitle {
+                color: #9297a5;
 
-    border-radius: 24px;
+                font-size: 14px;
 
-    padding: 32px 26px;
+                margin-top: 9px;
 
-    box-shadow:
-        0 25px 70px rgba(0,0,0,0.55),
-        inset 0 1px 0
-        rgba(255,255,255,0.04);
+                line-height: 1.5;
+            }
 
-    backdrop-filter:
-        blur(18px);
+            .brand {
+                color: #45e58a;
 
-    -webkit-backdrop-filter:
-        blur(18px);
+                font-size: 12px;
 
-    text-align: center;
-}
+                margin-top: 11px;
 
-.logo {
+                letter-spacing: 0.4px;
+            }
 
-    width: 76px;
-    height: 76px;
+            .divider {
+                height: 1px;
 
-    margin: 0 auto 18px;
+                border: 0;
 
-    display: flex;
+                margin: 25px 0;
 
-    align-items: center;
+                background:
+                    linear-gradient(
+                        90deg,
+                        transparent,
+                        rgba(255,255,255,0.1),
+                        transparent
+                    );
+            }
 
-    justify-content: center;
+            /* =========================
+               URL FORM
+            ========================= */
 
-    border-radius: 22px;
+            .form-title {
+                text-align: left;
 
-    font-size: 38px;
+                color: #dfe2e8;
 
-    background:
-        linear-gradient(
-            145deg,
-            #1ed760,
-            #0aa85a
-        );
+                font-size: 13px;
 
-    box-shadow:
-        0 12px 30px
-        rgba(30,215,96,0.22),
+                font-weight: 700;
 
-        inset 0 1px 0
-        rgba(255,255,255,0.25);
-}
+                margin-bottom: 9px;
+            }
 
-h1 {
+            .url-input {
+                width: 100%;
+            }
 
-    font-size: 28px;
+            .url-wrapper {
+                position: relative;
+                width: 100%;
+            }
 
-    line-height: 1.2;
+            .url-icon {
+                position: absolute;
 
-    font-weight: 800;
+                left: 15px;
+                top: 50%;
 
-    letter-spacing: 1.3px;
-}
+                transform: translateY(-50%);
 
-.subtitle {
+                font-size: 17px;
 
-    color: #9297a5;
+                opacity: 0.7;
 
-    font-size: 14px;
+                pointer-events: none;
+            }
 
-    margin-top: 9px;
+            .url-input input {
+                display: block;
 
-    line-height: 1.5;
-}
+                width: 100%;
+                height: 52px;
 
-.brand {
+                padding: 0 15px 0 45px;
 
-    color: #45e58a;
+                background: #101217;
 
-    font-size: 12px;
+                border: 1px solid #343842;
 
-    margin-top: 11px;
+                border-radius: 13px;
 
-    letter-spacing: 0.4px;
-}
+                color: #fff;
 
-.divider {
+                font-family: inherit;
 
-    height: 1px;
+                font-size: 16px;
 
-    border: 0;
+                outline: none;
 
-    margin: 25px 0;
+                transition:
+                    border-color 0.2s ease,
+                    box-shadow 0.2s ease,
+                    background 0.2s ease;
 
-    background:
-        linear-gradient(
-            90deg,
-            transparent,
-            rgba(255,255,255,0.1),
-            transparent
-        );
-}
+                -webkit-appearance: none;
+                appearance: none;
+            }
 
-.form-title {
+            .url-input input::placeholder {
+                color: #666b76;
+                font-size: 14px;
+            }
 
-    text-align: left;
+            .url-input input:focus {
+                border-color: #20d76b;
 
-    color: #dfe2e8;
+                background: #12151a;
 
-    font-size: 13px;
+                box-shadow:
+                    0 0 0 3px rgba(32,215,107,0.10),
+                    0 8px 25px rgba(0,0,0,0.2);
+            }
 
-    font-weight: 700;
+            .watch-button {
+                width: 100%;
+                height: 52px;
 
-    margin-bottom: 9px;
-}
+                margin-top: 14px;
 
-.url-wrapper {
+                border: none;
 
-    position: relative;
+                border-radius: 13px;
 
-    width: 100%;
-}
+                background:
+                    linear-gradient(
+                        135deg,
+                        #20d76b,
+                        #0eb85a
+                    );
 
-.url-icon {
+                color: #06130b;
 
-    position: absolute;
+                font-family: inherit;
 
-    left: 15px;
-    top: 50%;
+                font-size: 14px;
 
-    transform:
-        translateY(-50%);
+                font-weight: 800;
 
-    font-size: 17px;
+                letter-spacing: 0.5px;
 
-    opacity: 0.7;
+                cursor: pointer;
 
-    pointer-events: none;
-}
+                box-shadow:
+                    0 10px 25px rgba(32,215,107,0.18),
+                    inset 0 1px 0 rgba(255,255,255,0.25);
 
-.url-input input {
+                transition:
+                    transform 0.15s ease,
+                    filter 0.15s ease;
 
-    display: block;
+                -webkit-appearance: none;
+                appearance: none;
+            }
 
-    width: 100%;
+            .watch-button:active {
+                transform: scale(0.98);
+                filter: brightness(0.92);
+            }
 
-    height: 52px;
+            /* =========================
+               HINT
+            ========================= */
 
-    padding:
-        0 15px 0 45px;
+            .hint {
+                margin-top: 14px;
 
-    background: #101217;
+                color: #686e7a;
 
-    border:
-        1px solid #343842;
+                font-size: 11px;
 
-    border-radius: 13px;
+                line-height: 1.7;
 
-    color: #fff;
+                text-align: left;
+            }
 
-    font-family: inherit;
+            .hint code {
+                display: block;
 
-    font-size: 16px;
+                margin-top: 6px;
 
-    outline: none;
-}
+                padding: 9px 10px;
 
-.url-input input::placeholder {
+                background: #101217;
 
-    color: #666b76;
+                border: 1px solid rgba(255,255,255,0.05);
 
-    font-size: 14px;
-}
+                border-radius: 9px;
 
-.watch-button {
+                color: #777e8b;
 
-    width: 100%;
+                font-size: 10px;
 
-    height: 52px;
+                line-height: 1.5;
 
-    margin-top: 14px;
+                word-break: break-all;
+            }
 
-    border: none;
+            /* =========================
+               API ENDPOINTS
+            ========================= */
 
-    border-radius: 13px;
+            .endpoints {
+                margin-top: 25px;
 
-    background:
-        linear-gradient(
-            135deg,
-            #20d76b,
-            #0eb85a
-        );
+                padding: 18px;
 
-    color: #06130b;
+                background: rgba(255,255,255,0.025);
 
-    font-family: inherit;
+                border: 1px solid rgba(255,255,255,0.06);
 
-    font-size: 14px;
+                border-radius: 15px;
 
-    font-weight: 800;
+                text-align: left;
+            }
 
-    cursor: pointer;
-}
+            .endpoints-header {
+                display: flex;
 
-.hint {
+                align-items: center;
 
-    margin-top: 14px;
+                gap: 8px;
 
-    color: #686e7a;
+                margin-bottom: 13px;
+            }
 
-    font-size: 11px;
+            .endpoints-icon {
+                font-size: 18px;
+            }
 
-    line-height: 1.7;
+            .endpoints h3 {
+                color: #d8dbe1;
 
-    text-align: left;
-}
+                font-size: 13px;
 
-.hint code {
+                font-weight: 700;
+            }
 
-    display: block;
+            .endpoint {
+                padding: 11px 0;
 
-    margin-top: 6px;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
 
-    padding: 9px 10px;
+                color: #858b97;
 
-    background: #101217;
+                font-size: 11px;
 
-    border:
-        1px solid
-        rgba(255,255,255,0.05);
+                line-height: 1.5;
+            }
 
-    border-radius: 9px;
+            .endpoint:last-child {
+                border-bottom: none;
+                padding-bottom: 0;
+            }
 
-    color: #777e8b;
+            .endpoint:first-of-type {
+                padding-top: 0;
+            }
 
-    font-size: 10px;
+            .endpoint strong {
+                color: #45e58a;
 
-    line-height: 1.5;
+                font-size: 10px;
 
-    word-break: break-all;
-}
+                margin-right: 5px;
+            }
 
-.endpoints {
+            /* =========================
+               ACCOUNT PANEL
+            ========================= */
 
-    margin-top: 25px;
+            .account-box {
+                width: 100%;
 
-    padding: 18px;
+                margin-top: 16px;
 
-    background:
-        rgba(255,255,255,0.025);
+                padding: 22px 20px 20px;
 
-    border:
-        1px solid
-        rgba(255,255,255,0.06);
+                background: rgba(22, 24, 31, 0.94);
 
-    border-radius: 15px;
+                border: 1px solid rgba(255,255,255,0.08);
 
-    text-align: left;
-}
+                border-radius: 20px;
 
-.endpoints-header {
+                box-shadow:
+                    0 18px 45px rgba(0,0,0,0.35),
+                    inset 0 1px 0 rgba(255,255,255,0.03);
 
-    display: flex;
+                backdrop-filter: blur(18px);
+                -webkit-backdrop-filter: blur(18px);
+            }
 
-    align-items: center;
+            .account-header {
+                display: flex;
 
-    gap: 8px;
+                align-items: center;
 
-    margin-bottom: 13px;
-}
+                justify-content: space-between;
 
-.endpoints h3 {
+                margin-bottom: 18px;
+            }
 
-    color: #d8dbe1;
+            .account-title {
+                display: flex;
 
-    font-size: 13px;
-}
+                align-items: center;
 
-.endpoint {
+                gap: 11px;
+            }
 
-    padding: 11px 0;
+            .account-icon {
+                width: 40px;
+                height: 40px;
 
-    border-bottom:
-        1px solid
-        rgba(255,255,255,0.06);
+                display: flex;
+                align-items: center;
+                justify-content: center;
 
-    color: #858b97;
+                border-radius: 12px;
 
-    font-size: 11px;
+                background: rgba(32,215,107,0.10);
 
-    line-height: 1.5;
-}
+                border: 1px solid rgba(32,215,107,0.15);
 
-.endpoint:last-child {
+                font-size: 20px;
+            }
 
-    border-bottom: none;
-}
+            .account-heading {
+                color: #fff;
 
-.endpoint strong {
+                font-size: 14px;
 
-    color: #45e58a;
+                font-weight: 800;
+            }
 
-    font-size: 10px;
+            .account-subheading {
+                color: #686e7a;
 
-    margin-right: 5px;
-}
+                font-size: 10px;
 
-.account-box {
+                margin-top: 3px;
+            }
 
-    width: 100%;
+            .status {
+                display: inline-flex;
 
-    margin-top: 16px;
+                align-items: center;
 
-    padding: 22px 20px 20px;
+                gap: 5px;
 
-    background:
-        rgba(22,24,31,0.94);
+                padding: 6px 9px;
 
-    border:
-        1px solid
-        rgba(255,255,255,0.08);
+                border-radius: 20px;
 
-    border-radius: 20px;
+                background: rgba(32,215,107,0.08);
 
-    box-shadow:
-        0 18px 45px
-        rgba(0,0,0,0.35);
-}
+                border: 1px solid rgba(32,215,107,0.15);
 
-.account-header {
+                color: #45e58a;
 
-    display: flex;
+                font-size: 9px;
 
-    align-items: center;
+                font-weight: 800;
 
-    justify-content: space-between;
+                letter-spacing: 0.4px;
+            }
 
-    margin-bottom: 18px;
-}
+            .status-dot {
+                width: 6px;
+                height: 6px;
 
-.account-title {
+                border-radius: 50%;
 
-    display: flex;
+                background: #20d76b;
 
-    align-items: center;
+                box-shadow: 0 0 8px rgba(32,215,107,0.8);
+            }
 
-    gap: 11px;
-}
+            .account-info {
+                display: grid;
 
-.account-icon {
+                grid-template-columns: 1fr 1fr;
 
-    width: 40px;
-    height: 40px;
+                gap: 8px;
 
-    display: flex;
+                margin-bottom: 18px;
+            }
 
-    align-items: center;
+            .info-item {
+                padding: 12px;
 
-    justify-content: center;
+                background: rgba(255,255,255,0.025);
 
-    border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.05);
 
-    background:
-        rgba(32,215,107,0.10);
+                border-radius: 12px;
+            }
 
-    font-size: 20px;
-}
+            .info-label {
+                color: #666c78;
 
-.account-heading {
+                font-size: 9px;
 
-    color: #fff;
+                margin-bottom: 5px;
+            }
 
-    font-size: 14px;
+            .info-value {
+                color: #dfe2e8;
 
-    font-weight: 800;
-}
+                font-size: 11px;
 
-.account-subheading {
+                font-weight: 700;
+            }
 
-    color: #686e7a;
+            .info-value.active {
+                color: #45e58a;
+            }
 
-    font-size: 10px;
+            .logout-button {
+                display: flex;
 
-    margin-top: 3px;
-}
+                align-items: center;
+                justify-content: center;
 
-.status {
+                width: 100%;
+                height: 48px;
 
-    display: inline-flex;
+                border-radius: 12px;
 
-    align-items: center;
+                background:
+                    linear-gradient(
+                        135deg,
+                        rgba(255,70,70,0.12),
+                        rgba(180,40,40,0.10)
+                    );
 
-    gap: 5px;
+                border: 1px solid rgba(255,80,80,0.18);
 
-    padding: 6px 9px;
+                color: #ff7777;
 
-    border-radius: 20px;
+                text-decoration: none;
 
-    background:
-        rgba(32,215,107,0.08);
+                font-size: 12px;
 
-    color: #45e58a;
+                font-weight: 800;
 
-    font-size: 9px;
+                letter-spacing: 0.3px;
 
-    font-weight: 800;
-}
+                transition:
+                    background 0.2s ease,
+                    transform 0.15s ease;
+            }
 
-.status-dot {
+            .logout-button:active {
+                transform: scale(0.98);
 
-    width: 6px;
-    height: 6px;
+                background:
+                    rgba(255,70,70,0.18);
+            }
 
-    border-radius: 50%;
+            .account-footer {
+                margin-top: 17px;
 
-    background: #20d76b;
-}
+                text-align: center;
 
-.account-info {
+                color: #4f545e;
 
-    display: grid;
+                font-size: 9px;
 
-    grid-template-columns:
-        1fr 1fr;
+                line-height: 1.6;
+            }
 
-    gap: 8px;
+            /* =========================
+               MOBILE
+            ========================= */
 
-    margin-bottom: 18px;
-}
+            @media (max-width: 380px) {
 
-.info-item {
+                body {
+                    padding: 16px 12px;
+                }
 
-    padding: 12px;
+                .player-box {
+                    padding: 26px 18px 22px;
 
-    background:
-        rgba(255,255,255,0.025);
+                    border-radius: 20px;
+                }
 
-    border:
-        1px solid
-        rgba(255,255,255,0.05);
+                .logo {
+                    width: 68px;
+                    height: 68px;
 
-    border-radius: 12px;
-}
+                    font-size: 34px;
 
-.info-label {
+                    border-radius: 20px;
+                }
 
-    color: #666c78;
+                h1 {
+                    font-size: 23px;
+                }
 
-    font-size: 9px;
+                .account-box {
+                    padding: 19px 15px 17px;
 
-    margin-bottom: 5px;
-}
+                    border-radius: 18px;
+                }
 
-.info-value {
+                .account-info {
+                    gap: 6px;
+                }
 
-    color: #dfe2e8;
-
-    font-size: 11px;
-
-    font-weight: 700;
-}
-
-.info-value.active {
-
-    color: #45e58a;
-}
-
-.logout-button {
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: center;
-
-    width: 100%;
-
-    height: 48px;
-
-    border-radius: 12px;
-
-    background:
-        rgba(255,70,70,0.12);
-
-    border:
-        1px solid
-        rgba(255,80,80,0.18);
-
-    color: #ff7777;
-
-    text-decoration: none;
-
-    font-size: 12px;
-
-    font-weight: 800;
-}
-
-.account-footer {
-
-    margin-top: 17px;
-
-    text-align: center;
-
-    color: #4f545e;
-
-    font-size: 9px;
-
-    line-height: 1.6;
-}
-
-@media (max-width:380px) {
-
-    body {
-        padding: 16px 12px;
-    }
-
-    .player-box {
-        padding:
-            26px 18px 22px;
-    }
-
-    h1 {
-        font-size: 23px;
-    }
-
-    .account-box {
-        padding:
-            19px 15px 17px;
-    }
-}
-
-@media (min-width:600px) {
-
-    body {
-        padding: 40px 20px;
-    }
-
-    .player-box {
-        padding:
-            38px 34px 32px;
-    }
-}
-
-</style>
-
-</head>
-
-<body>
-
-<main class="page">
-
-<section class="player-box">
-
-<div class="logo">
-🎬
-</div>
-
-<h1>
-FAPHOUSE PLAYER
-</h1>
-
-<p class="subtitle">
-Enter any video URL to watch
-</p>
-
-<p class="brand">
-Powered by <b>LAPAK ANGKER</b>
-</p>
-
-<div class="divider"></div>
-
-<div class="url-input">
-
-<form
-method="GET"
-action="/play"
->
-
-<div class="form-title">
-🔗 Video URL
-</div>
-
-<div class="url-wrapper">
-
-<span class="url-icon">
-🌐
-</span>
-
-<input
-type="url"
-name="url"
-placeholder="Paste video URL here..."
-autocomplete="off"
-spellcheck="false"
-required
->
-
-</div>
-
-<button
-type="submit"
-class="watch-button"
->
-▶ WATCH NOW
-</button>
-
-</form>
-
-<div class="hint">
-
-💡 Example:
-
-<code>
-https://faphouse2.com/videos/shared-bed-stepsister-fuck-C6Qi1u
-</code>
-
-</div>
-
-</div>
-
-<div class="endpoints">
-
-<div class="endpoints-header">
-
-<span>
-📡
-</span>
-
-<h3>
-API ENDPOINTS
-</h3>
-
-</div>
-
-<div class="endpoint">
-<strong>GET</strong>
-/play?url=VIDEO_URL
-— Watch video
-</div>
-
-<div class="endpoint">
-<strong>GET</strong>
-/api/m3u8?url=VIDEO_URL
-— Get M3U8 URL
-</div>
-
-<div class="endpoint">
-<strong>GET</strong>
-/api/status
-— Check status
-</div>
-
-</div>
-
-</section>
-
-<section class="account-box">
-
-<div class="account-header">
-
-<div class="account-title">
-
-<div class="account-icon">
-👤
-</div>
-
-<div>
-
-<div class="account-heading">
-ACCOUNT
-</div>
-
-<div class="account-subheading">
-License & Session
-</div>
-
-</div>
-
-</div>
-
-<div class="status">
-
-<span class="status-dot"></span>
-
-ACTIVE
-
-</div>
-
-</div>
-
-<div class="account-info">
-
-<div class="info-item">
-
-<div class="info-label">
-🛡 LICENSE
-</div>
-
-<div class="info-value active">
-ACTIVE
-</div>
-
-</div>
-
-<div class="info-item">
-
-<div class="info-label">
-📦 VERSION
-</div>
-
-<div class="info-value">
-1.1.0
-</div>
-
-</div>
-
-<div class="info-item">
-
-<div class="info-label">
-🔐 SESSION
-</div>
-
-<div class="info-value active">
-SECURED
-</div>
-
-</div>
-
-<div class="info-item">
-
-<div class="info-label">
-⚡ STATUS
-</div>
-
-<div class="info-value active">
-ONLINE
-</div>
-
-</div>
-
-</div>
-
-<a
-href="/logout"
-class="logout-button"
->
-🚪 LOGOUT LICENSE
-</a>
-
-<div class="account-footer">
-License session is protected<br>
-© 2026 LAPAK ANGKER · All Rights Reserved
-</div>
-
-</section>
-
-</main>
-
-</body>
-
-</html>
-
-""")
-
-
-# ============================================================
-# PLAY
-# ============================================================
-
-@app.route(
-    "/play"
-)
-def play_video():
-
-    video_url = (
-        request.args
-        .get(
-            "url",
-            ""
-        )
-        .strip()
-    )
-
-    if not video_url:
-
-        return (
-            "❌ No URL provided",
-            400
-        )
-
-    if "#" in video_url:
-
-        video_url = video_url.split(
-            "#",
-            1
-        )[0]
-
-    try:
-
-        logger.info(
-            "Play request: %s",
-            video_url
-        )
-
-        m3u8_url = (
-            client.get_m3u8_url(
-                video_url
-            )
-        )
-
-        if m3u8_url:
-
-            return render_template_string(
-                """
-<!DOCTYPE html>
-
-<html>
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-name="viewport"
-content="width=device-width, initial-scale=1.0"
->
-
-<title>🎬 Video Player</title>
-
-<link
-href="https://vjs.zencdn.net/8.0.0/video-js.css"
-rel="stylesheet"
-/>
-
-<style>
-
-* {
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
-
-body {
-
-    background:#0a0a0a;
-
-    color:#fff;
-
-    font-family:
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Roboto,
-        sans-serif;
-
-    min-height:100vh;
-
-    padding:20px;
-}
-
-.container {
-
-    max-width:1200px;
-
-    width:100%;
-
-    margin:auto;
-
-    background:#1a1a1a;
-
-    border-radius:12px;
-
-    padding:20px;
-
-    box-shadow:
-        0 8px 32px
-        rgba(0,0,0,0.8);
-}
-
-.video-wrapper {
-
-    width:100%;
-
-    background:#000;
-
-    border-radius:8px;
-
-    overflow:hidden;
-
-    aspect-ratio:16/9;
-}
-
-#player {
-
-    width:100%;
-    height:100%;
-}
-
-.status-bar {
-
-    display:flex;
-
-    align-items:center;
-
-    gap:12px;
-
-    margin-bottom:15px;
-
-    flex-wrap:wrap;
-}
-
-.status-dot {
-
-    width:10px;
-    height:10px;
-
-    border-radius:50%;
-
-    background:#4CAF50;
-
-    animation:
-        pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-
-    0% {
-        opacity:1;
-    }
-
-    50% {
-        opacity:.3;
-    }
-
-    100% {
-        opacity:1;
-    }
-}
-
-.badge {
-
-    display:inline-block;
-
-    background:#4CAF50;
-
-    color:#fff;
-
-    padding:
-        2px 10px;
-
-    border-radius:20px;
-
-    font-size:10px;
-
-    font-weight:bold;
-}
-
-.info {
-
-    margin-top:15px;
-
-    padding:15px;
-
-    background:#222;
-
-    border-radius:8px;
-
-    font-size:13px;
-
-    word-break:break-all;
-}
-
-.info a {
-
-    color:#4CAF50;
-
-    text-decoration:none;
-}
-
-.back-link {
-
-    display:inline-block;
-
-    margin-top:15px;
-
-    color:#888;
-
-    text-decoration:none;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-<div class="status-bar">
-
-<h2>
-🎬 Faphouse
-<span class="badge">
-ULTRA
-</span>
-</h2>
-
-<span class="status-dot"></span>
-
-<span>
-Playing
-</span>
-
-</div>
-
-<div class="video-wrapper">
-
-<video
-id="player"
-class="video-js vjs-default-skin"
-controls
-autoplay
-preload="auto"
-playsinline
->
-
-<source
-src="{{ m3u8_url }}"
-type="application/x-mpegURL"
->
-
-</video>
-
-</div>
-
-<div class="info">
-
-<strong>
-📹 Video:
-</strong>
-
-<a
-href="{{ video_url }}"
-target="_blank"
-rel="noopener noreferrer"
->
-{{ video_url[:100] }}
-</a>
-
-<br><br>
-
-<strong>
-📊 Status:
-</strong>
-
-<span style="color:#4CAF50">
-● Playing
-</span>
-
-</div>
-
-<a
-href="/"
-class="back-link"
->
-← Back to Home
-</a>
-
-</div>
-
-<script
-src="https://vjs.zencdn.net/8.0.0/video.min.js"
-></script>
-
-<script>
-
-document.addEventListener(
-"DOMContentLoaded",
-function() {
-
-    var player =
-        videojs(
-            "player",
-            {
-                html5: {
-                    hls: {
-                        enableLowInitialPlaylist:
-                            true,
-
-                        smoothQualityChange:
-                            true,
-
-                        overrideNative:
-                            true
-                    }
+                .info-item {
+                    padding: 10px;
                 }
             }
-        );
 
-    player.ready(
-        function() {
+            @media (min-width: 600px) {
 
-            this.play()
-                .catch(
-                    function() {}
-                );
+                body {
+                    padding: 40px 20px;
+                }
 
-        }
-    );
+                .player-box {
+                    padding: 38px 34px 32px;
+                }
 
-});
+                .account-box {
+                    padding: 24px 22px 21px;
+                }
+            }
+        </style>
+    </head>
 
-</script>
+    <body>
 
-</body>
+        <main class="page">
 
-</html>
-                """,
-                m3u8_url=m3u8_url,
-                video_url=video_url
-            )
+            <!-- =========================
+                 MAIN PLAYER BOX
+            ========================== -->
 
-        return render_template_string(
-            """
-<div style="
-padding:40px;
-text-align:center;
-background:#0a0a0a;
-color:#fff;
-min-height:100vh;
-font-family:Arial;
-">
+            <section class="player-box">
 
-<div style="
-max-width:600px;
-margin:auto;
-">
+                <div class="logo">
+                    🎬
+                </div>
 
-<h2 style="color:#ff4444;">
-❌ Could not find playable video source
-</h2>
+                <h1>
+                    FAPHOUSE PLAYER
+                </h1>
 
-<p style="
-color:#888;
-margin:20px 0;
-">
-Video source tidak ditemukan dari halaman yang dapat diakses.
-</p>
+                <p class="subtitle">
+                    Enter any video URL to watch
+                </p>
 
-<a
-href="/"
-style="
-color:#4CAF50;
-text-decoration:none;
-display:inline-block;
-padding:10px 30px;
-background:#222;
-border-radius:6px;
-"
->
-← Go Home
-</a>
+                <p class="brand">
+                    Powered by <b>LAPAK ANGKER</b>
+                </p>
 
-</div>
+                <div class="divider"></div>
 
-</div>
-            """
-        )
+                <div class="url-input">
 
-    except Exception as e:
+                    <form method="GET" action="/play">
 
-        logger.exception(
-            "Play error"
-        )
+                        <div class="form-title">
+                            🔗 Video URL
+                        </div>
 
-        return render_template_string(
-            """
-<div style="
-padding:40px;
-text-align:center;
-background:#0a0a0a;
-color:#fff;
-min-height:100vh;
-font-family:Arial;
-">
+                        <div class="url-wrapper">
 
-<div style="
-max-width:600px;
-margin:auto;
-">
+                            <span class="url-icon">
+                                🌐
+                            </span>
 
-<h2 style="color:#ff4444;">
-❌ Error
-</h2>
+                            <input
+                                type="url"
+                                name="url"
+                                placeholder="Paste video URL here..."
+                                autocomplete="off"
+                                spellcheck="false"
+                                required
+                            >
 
-<p style="
-color:#888;
-margin:20px 0;
-word-break:break-word;
-">
-{{ error }}
-</p>
+                        </div>
 
-<a
-href="/"
-style="
-color:#4CAF50;
-text-decoration:none;
-display:inline-block;
-padding:10px 30px;
-background:#222;
-border-radius:6px;
-"
->
-← Go Home
-</a>
+                        <button
+                            type="submit"
+                            class="watch-button"
+                        >
+                            ▶ WATCH NOW
+                        </button>
 
-</div>
+                    </form>
 
-</div>
-            """,
-            error=str(e)
-        )
+                    <div class="hint">
+
+                        💡 Example:
+
+                        <code>
+                            https://faphouse2.com/videos/shared-bed-stepsister-fuck-C6Qi1u
+                        </code>
+
+                    </div>
+
+                </div>
+
+                <div class="endpoints">
+
+                    <div class="endpoints-header">
+
+                        <span class="endpoints-icon">
+                            📡
+                        </span>
+
+                        <h3>
+                            API ENDPOINTS
+                        </h3>
+
+                    </div>
+
+                    <div class="endpoint">
+                        <strong>GET</strong>
+                        /play?url=VIDEO_URL
+                        — Watch video
+                    </div>
+
+                    <div class="endpoint">
+                        <strong>GET</strong>
+                        /api/m3u8?url=VIDEO_URL
+                        — Get M3U8 URL
+                    </div>
+
+                    <div class="endpoint">
+                        <strong>GET</strong>
+                        /api/status
+                        — Check status
+                    </div>
+
+                </div>
+
+            </section>
 
 
-# ============================================================
-# API M3U8
-# ============================================================
+            <!-- =========================
+                 ACCOUNT BOX
+            ========================== -->
 
-@app.route(
-    "/api/m3u8"
-)
-def get_m3u8():
+            <section class="account-box">
 
-    video_url = (
-        request.args
-        .get(
-            "url",
-            ""
-        )
-        .strip()
-    )
+                <div class="account-header">
 
+                    <div class="account-title">
+
+                        <div class="account-icon">
+                            👤
+                        </div>
+
+                        <div>
+                            <div class="account-heading">
+                                ACCOUNT
+                            </div>
+
+                            <div class="account-subheading">
+                                License & Session
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="status">
+                        <span class="status-dot"></span>
+                        ACTIVE
+                    </div>
+
+                </div>
+
+
+                <div class="account-info">
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            🛡 LICENSE
+                        </div>
+
+                        <div class="info-value active">
+                            ACTIVE
+                        </div>
+
+                    </div>
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            📦 VERSION
+                        </div>
+
+                        <div class="info-value">
+                            1.0.0
+                        </div>
+
+                    </div>
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            🔐 SESSION
+                        </div>
+
+                        <div class="info-value active">
+                            SECURED
+                        </div>
+
+                    </div>
+
+                    <div class="info-item">
+
+                        <div class="info-label">
+                            ⚡ STATUS
+                        </div>
+
+                        <div class="info-value active">
+                            ONLINE
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <a
+                    href="/logout"
+                    class="logout-button"
+                >
+                    🚪 LOGOUT LICENSE
+                </a>
+
+
+                <div class="account-footer">
+                    License session is protected<br>
+                    © 2026 LAPAK ANGKER · All Rights Reserved
+                </div>
+
+            </section>
+
+        </main>
+
+    </body>
+    </html>
+    """)
+
+@app.route('/play')
+def play_video():
+    video_url = request.args.get('url')
+    
     if not video_url:
-
-        return jsonify({
-            "success":
-                False,
-
-            "error":
-                "Missing 'url' parameter"
-        }), 400
-
+        return "❌ No URL provided", 400
+    
+    if '#' in video_url:
+        video_url = video_url.split('#')[0]
+    
     try:
-
-        if "#" in video_url:
-
-            video_url = video_url.split(
-                "#",
-                1
-            )[0]
-
-        stream_url = (
-            client.get_m3u8_url(
-                video_url
-            )
-        )
-
-        if stream_url and (
-            ".m3u8" in stream_url.lower()
-            or stream_url.lower().endswith(".m3u8")
-        ):
-            return jsonify({
-                "success": True,
-                "m3u8_url": stream_url,
-                "video_url": video_url
-            })
-
-        if stream_url and (
-            ".m3u8" in stream_url.lower()
-            or stream_url.lower().endswith(".m3u8")
-        ):
-            return jsonify({
-                "success": True,
-                "m3u8_url": stream_url,
-                "video_url": video_url
-            })
-
-        return jsonify({
-            "success": False,
-            "error": "Resolved URL is not a valid HLS playlist"
-        }), 422
+        logger.info(f"🎬 Play request for: {video_url}")
+        m3u8_url = client.get_m3u8_url(video_url)
         
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "No playable video source found"
-        }), 404
-
+        if m3u8_url:
+            return render_template_string("""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>🎬 Video Player</title>
+                    <link href="https://vjs.zencdn.net/8.0.0/video-js.css" rel="stylesheet" />
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body {
+                            background: #0a0a0a;
+                            color: #fff;
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 20px;
+                        }
+                        .container {
+                            max-width: 1200px;
+                            width: 100%;
+                            background: #1a1a1a;
+                            border-radius: 12px;
+                            padding: 20px;
+                            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+                        }
+                        .video-wrapper {
+                            width: 100%;
+                            background: #000;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            position: relative;
+                            aspect-ratio: 16/9;
+                        }
+                        #player {
+                            width: 100%;
+                            height: 100%;
+                        }
+                        .info {
+                            margin-top: 15px;
+                            padding: 15px;
+                            background: #222;
+                            border-radius: 8px;
+                            font-size: 13px;
+                            word-break: break-all;
+                        }
+                        .info a { color: #4CAF50; text-decoration: none; }
+                        .badge {
+                            display: inline-block;
+                            background: #4CAF50;
+                            color: #fff;
+                            padding: 2px 12px;
+                            border-radius: 20px;
+                            font-size: 11px;
+                            font-weight: bold;
+                            margin-left: 10px;
+                        }
+                        .status-bar {
+                            display: flex;
+                            align-items: center;
+                            gap: 20px;
+                            margin-bottom: 15px;
+                            flex-wrap: wrap;
+                        }
+                        .status-bar h2 {
+                            display: flex;
+                            align-items: center;
+                            font-size: 20px;
+                        }
+                        .status-dot {
+                            display: inline-block;
+                            width: 10px;
+                            height: 10px;
+                            border-radius: 50%;
+                            background: #4CAF50;
+                            animation: pulse 1.5s infinite;
+                        }
+                        @keyframes pulse {
+                            0% { opacity: 1; }
+                            50% { opacity: 0.3; }
+                            100% { opacity: 1; }
+                        }
+                        .back-link {
+                            display: inline-block;
+                            margin-top: 10px;
+                            color: #888;
+                            text-decoration: none;
+                        }
+                        .back-link:hover { color: #fff; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="status-bar">
+                            <h2>
+                                🎬 Faphouse
+                                <span class="badge">ULTRA</span>
+                            </h2>
+                            <span class="status-dot"></span>
+                            <span class="video-title">Playing</span>
+                        </div>
+                        
+                        <div class="video-wrapper">
+                            <video id="player" class="video-js vjs-default-skin" controls autoplay preload="auto">
+                                <source src="{{ m3u8_url }}" type="application/x-mpegURL">
+                            </video>
+                        </div>
+                        
+                        <div class="info">
+                            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                                <div>
+                                    <strong>📹 Video:</strong> 
+                                    <a href="{{ video_url }}" target="_blank">{{ video_url[:60] }}...</a>
+                                </div>
+                                <div>
+                                    <strong>📊 Status:</strong> 
+                                    <span style="color: #4CAF50;">● Playing</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <a href="/" class="back-link">← Back to Home</a>
+                    </div>
+                    
+                    <script src="https://vjs.zencdn.net/8.0.0/video.min.js"></script>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var player = videojs('player', {
+                                html5: {
+                                    hls: {
+                                        enableLowInitialPlaylist: true,
+                                        smoothQualityChange: true,
+                                        overrideNative: true
+                                    }
+                                }
+                            });
+                            
+                            player.ready(function() {
+                                console.log('✅ Player ready');
+                                this.play().catch(function(e) {
+                                    console.log('Auto-play prevented:', e);
+                                });
+                            });
+                        });
+                    </script>
+                </body>
+                </html>
+            """, m3u8_url=m3u8_url, video_url=video_url)
+        else:
+            return render_template_string("""
+                <div style="padding: 40px; text-align: center; background: #0a0a0a; color: #fff; min-height: 100vh; font-family: Arial;">
+                    <div style="max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #ff4444;">❌ Could not find M3U8 URL</h2>
+                        <p style="color: #888; margin: 20px 0;">The video might be unavailable or blocked in your region.</p>
+                        <a href="/" style="color: #4CAF50; text-decoration: none; display: inline-block; padding: 10px 30px; background: #222; border-radius: 6px;">← Go Home</a>
+                    </div>
+                </div>
+            """)
     except Exception as e:
+        logger.error(f"❌ Play error: {str(e)}")
+        return render_template_string("""
+            <div style="padding: 40px; text-align: center; background: #0a0a0a; color: #fff; min-height: 100vh; font-family: Arial;">
+                <div style="max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #ff4444;">❌ Error</h2>
+                    <p style="color: #888; margin: 20px 0;">{{ error }}</p>
+                    <a href="/" style="color: #4CAF50; text-decoration: none; display: inline-block; padding: 10px 30px; background: #222; border-radius: 6px;">← Go Home</a>
+                </div>
+            </div>
+        """, error=str(e))
 
-        logger.exception(
-            "M3U8 API error"
-        )
+@app.route('/api/m3u8')
+def get_m3u8():
+    video_url = request.args.get('url')
+    
+    if not video_url:
+        return jsonify({"error": "Missing 'url' parameter"}), 400
+    
+    try:
+        if '#' in video_url:
+            video_url = video_url.split('#')[0]
+            
+        m3u8_url = client.get_m3u8_url(video_url)
+        
+        if m3u8_url:
+            return jsonify({
+                "success": True,
+                "m3u8_url": m3u8_url,
+                "video_url": video_url
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "No M3U8 URL found"
+            }), 404
+    except Exception as e:
+        logger.error(f"❌ API error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
-        return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                str(e)
-        }), 500
-
-
-# ============================================================
-# DEBUG
-# ============================================================
-
-@app.route(
-    "/api/debug"
-)
+@app.route('/api/debug')
 def api_debug():
 
-    video_url = (
-        request.args
-        .get(
-            "url",
-            ""
-        )
-        .strip()
-    )
+    video_url = request.args.get('url', '').strip()
 
     if not video_url:
-
         return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Missing 'url' parameter"
+            "success": False,
+            "error": "Missing 'url' parameter"
         }), 400
 
-    clean_url = video_url.split(
-        "#",
-        1
-    )[0]
+    # Untuk debugging, fragment (#...) tidak dikirim
+    # sebagai bagian dari HTTP request oleh browser.
+    clean_url = video_url.split('#')[0]
 
     try:
-
         debug_session = requests.Session()
 
         debug_session.headers.update({
-
-            "User-Agent":
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/120.0.0.0 "
-                "Safari/537.36",
-
-            "Accept":
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
                 "text/html,application/xhtml+xml,"
-                "application/xml;q=0.9,"
-                "image/webp,*/*;q=0.8",
-
-            "Accept-Language":
-                "en-US,en;q=0.9"
+                "application/xml;q=0.9,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9"
         })
 
         response = debug_session.get(
             clean_url,
-            timeout=20,
+            timeout=15,
             allow_redirects=True
         )
 
-        html = (
-            response.text
-            or ""
-        )
+        html = response.text or ""
 
-        html_lower = (
-            html.lower()
-        )
+        html_lower = html.lower()
 
-        def find_context(
-            keyword,
-            radius=2000
-        ):
-
-            pos = (
-                html_lower
-                .find(
-                    keyword.lower()
-                )
-            )
+        def find_context(keyword, radius=2000):
+            pos = html_lower.find(keyword.lower())
 
             if pos == -1:
                 return None
 
-            start = max(
-                0,
-                pos - radius
-            )
-
-            end = min(
-                len(html),
-                pos + radius
-            )
+            start = max(0, pos - radius)
+            end = min(len(html), pos + radius)
 
             return {
-
-                "position":
-                    pos,
-
-                "context":
-                    html[start:end]
+                "position": pos,
+                "context": html[start:end]
             }
 
         return jsonify({
-
-            "success":
-                True,
-
-            "debug_version":
-                "OPTIMIZED-DEBUG-001",
+            "success": True,
+            "debug_version": "DEBUG-2026-08-15-A",
 
             "request": {
-
-                "original_url":
-                    video_url,
-
-                "clean_url":
-                    clean_url
+                "original_url": video_url,
+                "clean_url": clean_url
             },
 
             "response": {
-
-                "status_code":
-                    response.status_code,
-
-                "final_url":
-                    response.url,
-
-                "content_type":
-                    response.headers.get(
-                        "Content-Type"
-                    ),
-
-                "content_encoding":
-                    response.headers.get(
-                        "Content-Encoding"
-                    ),
-
-                "content_length":
-                    len(
-                        response.content
-                    )
+                "status_code": response.status_code,
+                "final_url": response.url,
+                "content_type": response.headers.get(
+                    "Content-Type"
+                ),
+                "content_encoding": response.headers.get(
+                    "Content-Encoding"
+                ),
+                "content_length": len(response.content)
             },
 
             "cookies": [
                 cookie.name
-                for cookie
-                in debug_session.cookies
+                for cookie in debug_session.cookies
             ],
 
             "indicators": {
-
-                "contains_m3u8":
-                    ".m3u8"
-                    in html_lower,
-
-                "contains_video_pr":
-                    "video-pr"
-                    in html_lower,
-
-                "contains_sources":
-                    "sources"
-                    in html_lower,
-
-                "contains_hls":
-                    "hls"
-                    in html_lower,
-
-                "contains_video":
-                    "<video"
-                    in html_lower,
-
-                "contains_script":
-                    "<script"
-                    in html_lower
+                "contains_m3u8": ".m3u8" in html_lower,
+                "contains_video_pr": "video-pr" in html_lower,
+                "contains_sources": "sources" in html_lower,
+                "contains_hls": "hls" in html_lower,
+                "contains_video": "<video" in html_lower,
+                "contains_script": "<script" in html_lower
             },
 
             "keyword_context": {
-
-                "video_pr":
-                    find_context(
-                        "video-pr"
-                    ),
-
-                "hls":
-                    find_context(
-                        "hls"
-                    ),
-
-                "sources":
-                    find_context(
-                        "sources"
-                    )
+                "video_pr": find_context("video-pr"),
+                "hls": find_context("hls"),
+                "sources": find_context("sources")
             },
 
-            "html_preview":
-                html[:3000]
+            "html_preview": html[:3000]
         })
 
     except Exception as e:
 
-        logger.exception(
-            "Debug request failed"
-        )
+        logger.exception("Debug request failed")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                str(e)
+            "success": False,
+            "error": str(e)
         }), 500
 
-
-# ============================================================
-# DEBUG2
-# ============================================================
-
-@app.route(
-    "/api/debug2"
-)
+@app.route('/api/debug2')
 def api_debug2():
 
-    video_url = (
-        request.args
-        .get(
-            "url",
-            ""
-        )
-        .strip()
-    )
+    video_url = request.args.get('url', '').strip()
 
     if not video_url:
-
         return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Missing 'url' parameter"
+            "success": False,
+            "error": "Missing 'url' parameter"
         }), 400
 
-    clean_url = video_url.split(
-        "#",
-        1
-    )[0]
+    clean_url = video_url.split('#')[0]
 
     try:
-
         debug_session = requests.Session()
 
         debug_session.headers.update({
-
-            "User-Agent":
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/120.0.0.0 "
-                "Safari/537.36",
-
-            "Accept":
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
                 "text/html,application/xhtml+xml,"
-                "application/xml;q=0.9,"
-                "image/webp,*/*;q=0.8",
-
-            "Accept-Language":
-                "en-US,en;q=0.9"
+                "application/xml;q=0.9,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9"
         })
 
         response = debug_session.get(
             clean_url,
-            timeout=20,
+            timeout=15,
             allow_redirects=True
         )
 
-        html = (
-            response.text
-            or ""
-        )
+        html = response.text or ""
+        html_lower = html.lower()
 
-        html_lower = (
-            html.lower()
-        )
-
-        def find_all_contexts(
-            keyword,
-            radius=1500,
-            limit=10
-        ):
-
+        def find_all_contexts(keyword, radius=1500, limit=10):
             results = []
-
             start_from = 0
-
-            keyword_lower = (
-                keyword.lower()
-            )
+            keyword_lower = keyword.lower()
 
             while len(results) < limit:
 
@@ -3987,212 +2501,120 @@ def api_debug2():
                 if pos == -1:
                     break
 
-                start = max(
-                    0,
-                    pos - radius
-                )
-
+                start = max(0, pos - radius)
                 end = min(
                     len(html),
-                    pos
-                    + len(keyword)
-                    + radius
+                    pos + len(keyword) + radius
                 )
 
                 results.append({
-
-                    "position":
-                        pos,
-
-                    "context":
-                        html[start:end]
+                    "position": pos,
+                    "context": html[start:end]
                 })
 
-                start_from = (
-                    pos + len(keyword)
-                )
+                start_from = pos + len(keyword)
 
             return results
 
         keywords = [
-
             "video-pr.xhcdn.com",
-
             "data-sources",
-
             "data-video",
-
             "video_url",
-
             "videoUrl",
-
             "video_data",
-
             "videoData",
-
             "player",
-
             "media=",
-
             "format/",
-
             ".m3u8",
-
             "m3u8",
-
-            "hls",
-
-            "sources",
-
-            "source"
+            "hls"
         ]
 
         contexts = {}
 
         for keyword in keywords:
-
-            contexts[keyword] = (
-                find_all_contexts(
-                    keyword,
-                    radius=1200,
-                    limit=5
-                )
+            contexts[keyword] = find_all_contexts(
+                keyword,
+                radius=1200,
+                limit=5
             )
 
         return jsonify({
+            "success": True,
 
-            "success":
-                True,
-
-            "debug_version":
-                "OPTIMIZED-DEBUG2-001",
+            "debug_version": "DEBUG-2026-08-15-B",
 
             "request": {
-
-                "original_url":
-                    video_url,
-
-                "clean_url":
-                    clean_url
+                "original_url": video_url,
+                "clean_url": clean_url
             },
 
             "response": {
-
-                "status_code":
-                    response.status_code,
-
-                "final_url":
-                    response.url,
-
-                "content_type":
-                    response.headers.get(
-                        "Content-Type"
-                    ),
-
-                "content_encoding":
-                    response.headers.get(
-                        "Content-Encoding"
-                    ),
-
-                "content_length":
-                    len(
-                        response.content
-                    )
+                "status_code": response.status_code,
+                "final_url": response.url,
+                "content_type": response.headers.get(
+                    "Content-Type"
+                ),
+                "content_encoding": response.headers.get(
+                    "Content-Encoding"
+                ),
+                "content_length": len(response.content)
             },
 
             "cookies": [
                 cookie.name
-                for cookie
-                in debug_session.cookies
+                for cookie in debug_session.cookies
             ],
 
             "keyword_counts": {
-
-                keyword:
-                    html_lower.count(
-                        keyword.lower()
-                    )
-
-                for keyword
-                in keywords
+                keyword: html_lower.count(
+                    keyword.lower()
+                )
+                for keyword in keywords
             },
 
-            "contexts":
-                contexts
+            "contexts": contexts
 
         })
 
     except Exception as e:
 
-        logger.exception(
-            "Debug2 request failed"
-        )
+        logger.exception("Debug2 request failed")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                str(e)
+            "success": False,
+            "error": str(e)
         }), 500
 
-
-# ============================================================
-# DEBUG VIDEO
-# ============================================================
-
-@app.route(
-    "/api/debug-video"
-)
+@app.route('/api/debug-video')
 def api_debug_video():
 
-    video_url = (
-        request.args
-        .get(
-            "url",
-            ""
-        )
-        .strip()
-    )
+    video_url = request.args.get('url', '').strip()
 
     if not video_url:
-
         return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                "Missing 'url' parameter"
+            "success": False,
+            "error": "Missing 'url' parameter"
         }), 400
 
-    clean_url = video_url.split(
-        "#",
-        1
-    )[0]
+    clean_url = video_url.split('#')[0]
 
     try:
-
         debug_session = requests.Session()
 
         debug_session.headers.update({
-
-            "User-Agent":
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/120.0.0.0 "
-                "Safari/537.36",
-
-            "Accept":
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
                 "text/html,application/xhtml+xml,"
-                "application/xml;q=0.9,"
-                "image/webp,*/*;q=0.8",
-
-            "Accept-Language":
-                "en-US,en;q=0.9"
+                "application/xml;q=0.9,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9"
         })
 
         response = debug_session.get(
@@ -4201,218 +2623,110 @@ def api_debug_video():
             allow_redirects=True
         )
 
-        html = (
-            response.text
-            or ""
-        )
+        html = response.text or ""
 
+        # Cari semua URL video-pr yang muncul di HTML
         video_pr_urls = re.findall(
             r'https?://video-pr\.xhcdn\.com[^"\'<>\s]+',
             html,
             re.IGNORECASE
         )
 
+        # Cari potongan HTML yang mengandung player/video
         contexts = []
 
         keywords = [
-
-            "video-pr.xhcdn.com",
-
-            "data-sources",
-
-            "sources:",
-
+            'video-pr.xhcdn.com',
+            'data-sources',
+            'sources:',
             '"sources"',
-
             "'sources'",
-
-            "hls",
-
-            "player",
-
-            "media",
-
-            "video_url",
-
-            "videoUrl"
+            'hls',
+            'player',
+            'media',
+            'video_url',
+            'videoUrl'
         ]
 
-        html_lower = (
-            html.lower()
-        )
+        html_lower = html.lower()
 
         for keyword in keywords:
-
-            pos = html_lower.find(
-                keyword.lower()
-            )
+            pos = html_lower.find(keyword.lower())
 
             if pos != -1:
-
-                start = max(
-                    0,
-                    pos - 1500
-                )
-
-                end = min(
-                    len(html),
-                    pos + 3000
-                )
+                start = max(0, pos - 1500)
+                end = min(len(html), pos + 3000)
 
                 contexts.append({
-
-                    "keyword":
-                        keyword,
-
-                    "position":
-                        pos,
-
-                    "context":
-                        html[start:end]
+                    "keyword": keyword,
+                    "position": pos,
+                    "context": html[start:end]
                 })
 
         return jsonify({
-
-            "success":
-                True,
+            "success": True,
 
             "response": {
-
-                "status_code":
-                    response.status_code,
-
-                "final_url":
-                    response.url,
-
-                "content_length":
-                    len(
-                        response.content
-                    )
+                "status_code": response.status_code,
+                "final_url": response.url,
+                "content_length": len(response.content)
             },
 
-            "video_pr_urls":
-                list(
-                    dict.fromkeys(
-                        video_pr_urls
-                    )
-                ),
+            "video_pr_urls": list(dict.fromkeys(video_pr_urls)),
 
-            "video_pr_count":
-                len(
-                    video_pr_urls
-                ),
+            "video_pr_count": len(video_pr_urls),
 
-            "contexts":
-                contexts[:20]
+            "contexts": contexts[:20]
         })
 
     except Exception as e:
 
-        logger.exception(
-            "Debug video request failed"
-        )
+        logger.exception("Debug video request failed")
 
         return jsonify({
-
-            "success":
-                False,
-
-            "error":
-                str(e)
+            "success": False,
+            "error": str(e)
         }), 500
 
-
-# ============================================================
-# STATUS
-# ============================================================
-
-@app.route(
-    "/api/status"
-)
+@app.route('/api/status')
 def status():
-
     return jsonify({
-
-        "status":
-            "online",
-
-        "logged_in":
-            client.logged_in,
-
-        "session_created":
-            client.session_created,
-
-        "cache_info":
-            client
-            .get_m3u8_url
-            .cache_info()
-            ._asdict()
+        "status": "online",
+        "logged_in": client.logged_in,
+        "session_created": client.session_created,
+        "cache_info": client.get_m3u8_url.cache_info()._asdict()
     })
-
-
-# ============================================================
-# LOGOUT LICENSE
-# ============================================================
-
-@app.route(
-    "/logout"
-)
+    
+@app.route("/logout")
 def logout():
-
     session.clear()
-
-    return redirect(
-        "/license"
-    )
-
-
-# ============================================================
-# LOCAL RUN
-# ============================================================
+    return redirect("/license")
+    
+def handler(request, context):
+    return app(request.environ, context)
 
 if __name__ == "__main__":
+    print(f"""
+{'='*70}
+🎬 Faphouse Player API (Vercel Ready - Working!)
+{'='*70}
 
-    print(
-        "\n"
-        + "=" * 70
-    )
+✅ Features:
+  • Properly decodes compressed (brotli) responses
+  • Finds M3U8 URLs reliably
+  • LRU caching for fast responses
+  • Works on Vercel serverless
 
-    print(
-        "🎬 FAPHOUSE PLAYER"
-    )
+📌 Endpoints:
+  📺 /play?url=VIDEO_URL     - Watch video
+  📡 /api/m3u8?url=VIDEO_URL - Get M3U8 URL
+  📊 /api/status             - Check status
 
-    print(
-        "Optimized Vercel Flask"
-    )
-
-    print(
-        "=" * 70
-    )
-
-    print(
-        "EMAIL:",
-        (
-            EMAIL[:5] + "..."
-            if EMAIL
-            else "NOT SET"
-        )
-    )
-
-    print(
-        "PASSWORD:",
-        (
-            "*" * 8
-            if PASSWORD
-            else "NOT SET"
-        )
-    )
-
-    print(
-        "=" * 70
-    )
-
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=True
-    )
+🔐 Credentials:
+  EMAIL: {EMAIL[:5]}... 
+  PASSWORD: {'*' * 8}
+{'='*70}
+""")
+    
+    print("🚀 Starting server for local testing...")
+    app.run(host='0.0.0.0', port=5000, debug=True)
